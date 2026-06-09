@@ -1,0 +1,60 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- matte black body -->
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#19191c"/>
+      <stop offset="55%" stop-color="#0e0e10"/>
+      <stop offset="100%" stop-color="#070708"/>
+    </linearGradient>
+    <!-- barely-there rim: dark, not white -->
+    <linearGradient id="rimGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.10"/>
+      <stop offset="40%" stop-color="#ffffff" stop-opacity="0.02"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.4"/>
+    </linearGradient>
+    <!-- graphite lens ring -->
+    <radialGradient id="ringGrad" cx="0.4" cy="0.32" r="1">
+      <stop offset="0%" stop-color="#3a3a40"/>
+      <stop offset="60%" stop-color="#232327"/>
+      <stop offset="100%" stop-color="#141416"/>
+    </radialGradient>
+    <!-- record orb -->
+    <radialGradient id="recGrad" cx="0.36" cy="0.3" r="1">
+      <stop offset="0%" stop-color="#ff7a70"/>
+      <stop offset="45%" stop-color="#ff3b30"/>
+      <stop offset="100%" stop-color="#b3160f"/>
+    </radialGradient>
+    <radialGradient id="recGlow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#ff3b30" stop-opacity="0.5"/>
+      <stop offset="70%" stop-color="#ff3b30" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#ff3b30" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <clipPath id="squircleClip">
+      <rect x="92" y="92" width="840" height="840" rx="200" ry="200"/>
+    </clipPath>
+  </defs>
+
+  <rect x="92" y="92" width="840" height="840" rx="200" ry="200" fill="url(#bgGrad)"/>
+
+  <g clip-path="url(#squircleClip)">
+    <ellipse cx="512" cy="200" rx="600" ry="260" fill="url(#sheen)"/>
+    <circle cx="512" cy="520" r="400" fill="url(#recGlow)"/>
+  </g>
+
+  <!-- graphite lens ring -->
+  <circle cx="512" cy="512" r="252" fill="url(#ringGrad)"/>
+  <circle cx="512" cy="512" r="252" fill="none" stroke="#ffffff" stroke-opacity="0.07" stroke-width="4"/>
+  <circle cx="512" cy="512" r="196" fill="#0a0a0b"/>
+  <circle cx="512" cy="512" r="196" fill="none" stroke="#000000" stroke-opacity="0.6" stroke-width="6"/>
+
+  <!-- record orb -->
+  <circle cx="512" cy="512" r="132" fill="url(#recGrad)"/>
+  <ellipse cx="468" cy="462" rx="62" ry="40" fill="#ffffff" opacity="0.35"/>
+
+  <!-- subtle dark rim on squircle -->
+  <rect x="92" y="92" width="840" height="840" rx="200" ry="200" fill="none" stroke="url(#rimGrad)" stroke-width="6"/>
+</svg>

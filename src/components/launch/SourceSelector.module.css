@@ -1,0 +1,68 @@
+.glassContainer {
+	background: var(--launch-surface);
+	border-radius: 8px;
+	border: 1px solid var(--launch-border);
+	box-shadow: var(--launch-bar-shadow);
+}
+
+.sourceCard {
+	border-radius: 6px;
+	background: var(--launch-surface-raised);
+	border: 1px solid var(--launch-hairline);
+	transition:
+		border-color 0.15s ease-out,
+		background 0.15s ease-out;
+}
+
+.sourceCard:hover {
+	border-color: var(--launch-border-strong);
+	background: var(--launch-hover);
+}
+
+.selected {
+	border: 1px solid var(--launch-accent);
+	background: var(--launch-selected);
+	box-shadow: 0 0 0 1px var(--launch-accent);
+}
+
+.icon {
+	width: 13px;
+	height: 13px;
+	color: var(--launch-text-muted);
+}
+
+.name {
+	font-size: 0.85rem;
+	color: var(--launch-text);
+	font-weight: 500;
+	letter-spacing: 0.01em;
+}
+
+.cardText {
+	color: var(--launch-text-muted);
+	font-size: 0.75rem;
+}
+
+/* scrollbar */
+.sourceGridScroll {
+	scrollbar-width: thin;
+	scrollbar-color: var(--launch-border-strong) transparent;
+}
+
+.sourceGridScroll::-webkit-scrollbar {
+	width: 6px;
+}
+
+.sourceGridScroll::-webkit-scrollbar-track {
+	background: transparent;
+	margin: 4px 0;
+}
+
+.sourceGridScroll::-webkit-scrollbar-thumb {
+	background: var(--launch-border-strong);
+	border-radius: 4px;
+}
+
+.sourceGridScroll::-webkit-scrollbar-thumb:hover {
+	background: var(--launch-accent);
+}

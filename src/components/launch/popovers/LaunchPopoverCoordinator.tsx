@@ -1,0 +1,56 @@
+import { createContext, type ReactNode, useCallback, useContext, useMemo, useState } from "react";
+
+interface LaunchPopoverCoordinatorValue {
+	openId: string | null;
+	requestOpen: (id: string) => void;
+	requestClose: (id: string) => void;
+	isOpen: (id: string) => boolean;
+}
+
+const LaunchPopoverCoordinatorContext = createContext<LaunchPopoverCoordinatorValue | null>(null);
+
+export function LaunchPopoverCoordinatorProvider({ children }: { children: ReactNode }) {
+	const [openId, setOpenId] = useState<string | null>(null);
+
+	const requestOpen = useCallback((id: string) => {
+		setOpenId(id);
+	}, []);
+
+	const requestClose = useCallback((id: string) => {
+		setOpenId((currentId) => (currentId === id ? null : currentId));
+	}, []);
+
+	const isOpen = useCallback((id: string) => openId === id, [openId]);
+
+	// NOTE: we deliberately do NOT close popovers on window "blur". The HUD overlay
+	// is a focusable:false always-on-top window, so opening a popover triggers a
+	// spurious window blur that previously slammed every popover shut the instant
+	// it opened (3-dots / folder / mic / webcam / clock all appeared "dead").
+	// Radix Popover already dismisses on outside-click and Escape, which is enough.
+
+	const value = useMemo(
+		() => ({
+			openId,
+			requestOpen,
+			requestClose,
+			isOpen,
+		}),
+		[isOpen, openId, requestClose, requestOpen],
+	);
+
+	return (
+		<LaunchPopoverCoordinatorContext.Provider value={value}>
+			{children}
+		</LaunchPopoverCoordinatorContext.Provider>
+	);
+}
+
+export function useLaunchPopoverCoordinator() {
+	const context = useContext(LaunchPopoverCoordinatorContext);
+	if (!context) {
+		throw new Error(
+			"useLaunchPopoverCoordinator must be used within LaunchPopoverCoordinatorProvider",
+		);
+	}
+	return context;
+}

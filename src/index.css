@@ -1,0 +1,296 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+	/* Disable Electron/Chromium focus highlight (yellow/orange ring) */
+	*:focus:not(:focus-visible) {
+		outline: none !important;
+	}
+
+	*:focus-visible {
+		outline: 2px solid rgb(var(--brand-accent-rgb));
+		outline-offset: 2px;
+		-webkit-tap-highlight-color: transparent;
+	}
+
+	html,
+	body,
+	#root {
+		width: 100%;
+		height: 100%;
+		margin: 0;
+	}
+
+	html.hud-overlay-window,
+	body.hud-overlay-window,
+	#root.hud-overlay-window {
+		overflow: hidden;
+	}
+
+	:root {
+		--app-font-sans: "SF Pro Display", "SF Pro Text", Helvetica, sans-serif;
+		--app-font-mono: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas,
+			"Liberation Mono", monospace;
+		/* Studio Black — record red is the only hue */
+		--brand-accent: #ff3b30;
+		--brand-accent-rgb: 255, 59, 48;
+		--brand-glow: #ff5247;
+		--brand-glow-rgb: 255, 82, 71;
+		--record-red: #ff3b30;
+		--record-red-rgb: 255, 59, 48;
+		/* Light theme: neutral warm-gray, same red accent */
+		/* bg #f5f5f4 · surface #ffffff · hairline #e4e4e2 · text #1a1a1c · muted #77777e */
+		--background: 60 9% 96%;
+		--foreground: 240 4% 11%;
+		--card: 0 0% 100%;
+		--card-foreground: 240 4% 11%;
+		--popover: 0 0% 100%;
+		--popover-foreground: 240 4% 11%;
+		--primary: 4 100% 59%;
+		--primary-foreground: 0 0% 100%;
+		--secondary: 0 0% 100%;
+		--secondary-foreground: 240 4% 16%;
+		--muted: 40 6% 94%;
+		--muted-foreground: 240 4% 48%;
+		--accent: 40 6% 94%;
+		--accent-foreground: 4 100% 59%;
+		--destructive: 4 100% 59%;
+		--destructive-foreground: 0 0% 100%;
+		--border: 40 5% 89%;
+		--input: 40 5% 89%;
+		--ring: 4 100% 59%;
+		--chart-1: 4 100% 59%;
+		--chart-2: 240 4% 60%;
+		--chart-3: 240 4% 40%;
+		--chart-4: 240 4% 75%;
+		--chart-5: 4 100% 70%;
+		--radius: 0.5rem;
+
+		/* Editor surface colors — light mode (neutral warm-gray, zero blue) */
+		--editor-bg: 60 9% 96%;
+		--editor-header: 0 0% 100%;
+		--editor-panel: 0 0% 100%;
+		--editor-surface: 40 6% 97%;
+		--editor-surface-alt: 40 6% 94%;
+		--editor-dialog: 0 0% 100%;
+		--editor-dialog-alt: 40 6% 97%;
+		--editor-timeline: 60 9% 94%;
+		--editor-row: 40 6% 92%;
+		--editor-subrow: 40 5% 89%;
+
+		/* Slider tokens — light mode (track hairline, white thumb, red glow) */
+		--slider-track: 40 5% 89%;
+		--slider-thumb: 0 0% 100%;
+		--slider-thumb-shadow: 240 4% 11% / 0.18;
+		--slider-glow: 4 100% 59% / 0.5;
+	}
+	.dark {
+		/* Dark theme (primary): Studio Black, matte instrument greys */
+		/* bg #0a0a0b · surface #131316 · surface-raised #1a1a1e · hairline #26262b */
+		/* text #f5f5f6 · muted #8a8a93 · disabled #4a4a52 */
+		--background: 240 5% 4%;
+		--foreground: 240 6% 96%;
+		--card: 240 7% 9%;
+		--card-foreground: 240 6% 96%;
+		--popover: 240 6% 11%;
+		--popover-foreground: 240 6% 96%;
+		--primary: 4 100% 59%;
+		--primary-foreground: 0 0% 100%;
+		--secondary: 240 7% 9%;
+		--secondary-foreground: 240 6% 96%;
+		--muted: 240 6% 11%;
+		--muted-foreground: 240 5% 56%;
+		--accent: 240 6% 11%;
+		--accent-foreground: 4 100% 64%;
+		--destructive: 4 100% 59%;
+		--destructive-foreground: 0 0% 100%;
+		--border: 240 6% 16%;
+		--input: 240 6% 16%;
+		--ring: 4 100% 59%;
+		--chart-1: 4 100% 59%;
+		--chart-2: 240 5% 56%;
+		--chart-3: 240 5% 40%;
+		--chart-4: 240 6% 70%;
+		--chart-5: 4 100% 70%;
+
+		/* Editor surface colors — dark mode (Studio Black, zero blue tint) */
+		--editor-bg: 240 5% 4%;
+		--editor-header: 240 7% 6%;
+		--editor-panel: 240 7% 9%;
+		--editor-surface: 240 6% 11%;
+		--editor-surface-alt: 240 6% 13%;
+		--editor-dialog: 240 6% 11%;
+		--editor-dialog-alt: 240 7% 9%;
+		--editor-timeline: 240 6% 5%;
+		--editor-row: 240 6% 9%;
+		--editor-subrow: 240 6% 13%;
+
+		/* Slider tokens — dark mode (track hairline, white thumb, red glow) */
+		--slider-track: 240 6% 16%;
+		--slider-thumb: 0 0% 100%;
+		--slider-thumb-shadow: 240 5% 2% / 0.6;
+		--slider-glow: 4 100% 59% / 0.55;
+	}
+}
+
+@layer base {
+	* {
+		@apply border-border;
+	}
+	body {
+		@apply bg-background text-foreground;
+
+		-webkit-user-select: none;
+		user-select: none;
+		font-family: var(--app-font-sans);
+	}
+
+	button,
+	input,
+	textarea,
+	select {
+		font: inherit;
+	}
+
+	/* Monospace for ALL timecodes / durations / numeric readouts (camera-body engraving) */
+	body .font-mono,
+	body kbd {
+		font-family: var(--app-font-mono);
+		font-feature-settings: "tnum" 1, "zero" 1;
+	}
+}
+
+@layer utilities {
+	/* Uppercase letterspaced section labels — like engraving on a camera body */
+	.text-engraved {
+		text-transform: uppercase;
+		font-size: 10px;
+		line-height: 1.1;
+		letter-spacing: 0.14em;
+		color: hsl(var(--muted-foreground));
+		font-weight: 500;
+	}
+}
+
+/* Smooth timeline cursor animations */
+@layer utilities {
+	.timeline-cursor-smooth {
+		will-change: transform;
+		transition:
+			left 33ms linear,
+			right 33ms linear;
+	}
+
+	.indeterminate-progress {
+		position: relative;
+		overflow: hidden;
+		isolation: isolate;
+	}
+
+	.indeterminate-progress::before {
+		content: "";
+		position: absolute;
+		inset: 0;
+		width: 38%;
+		min-width: 3.5rem;
+		border-radius: inherit;
+		background: linear-gradient(
+			90deg,
+			rgba(var(--brand-accent-rgb), 0) 0%,
+			rgba(var(--brand-accent-rgb), 0.35) 18%,
+			rgba(var(--brand-glow-rgb), 0.92) 52%,
+			rgba(var(--brand-accent-rgb), 0.3) 82%,
+			rgba(var(--brand-accent-rgb), 0) 100%
+		);
+		animation: indeterminate-progress 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+	}
+
+	/* Hidden scrollbar - still scrollable but invisible */
+	.custom-scrollbar {
+		scrollbar-width: none; /* Firefox */
+		-ms-overflow-style: none; /* IE/Edge */
+	}
+
+	.custom-scrollbar::-webkit-scrollbar {
+		display: none; /* Chrome, Safari, Opera */
+	}
+
+	/* Smooth playback scrubber */
+	input[type="range"] {
+		-webkit-appearance: none;
+		appearance: none;
+	}
+
+	input[type="range"]::-webkit-slider-runnable-track {
+		border-radius: 100px;
+		height: 2px;
+		background: hsl(var(--slider-track));
+	}
+
+	input[type="range"]::-moz-range-track {
+		border-radius: 100px;
+		height: 2px;
+		background: hsl(var(--slider-track));
+	}
+
+	input[type="range"]::-webkit-slider-thumb {
+		-webkit-appearance: none;
+		appearance: none;
+		width: 12px;
+		height: 12px;
+		margin-top: -5px;
+		border-radius: 50%;
+		background: hsl(var(--slider-thumb));
+		cursor: pointer;
+		box-shadow: 0 1px 4px hsl(var(--slider-thumb-shadow));
+		border: none;
+		transition: all 0.15s ease-out;
+	}
+
+	input[type="range"]::-webkit-slider-thumb:hover {
+		transform: scale(1.15);
+		box-shadow: 0 0 0 4px hsl(var(--slider-glow)), 0 1px 4px hsl(var(--slider-thumb-shadow));
+	}
+
+	input[type="range"]::-webkit-slider-thumb:active {
+		transform: scale(1.2);
+	}
+
+	input[type="range"]::-moz-range-thumb {
+		width: 12px;
+		height: 12px;
+		border-radius: 50%;
+		background: hsl(var(--slider-thumb));
+		cursor: pointer;
+		border: none;
+		box-shadow: 0 1px 4px hsl(var(--slider-thumb-shadow));
+		transition: all 0.15s ease-out;
+	}
+
+	input[type="range"]::-moz-range-thumb:hover {
+		transform: scale(1.15);
+		box-shadow: 0 0 0 4px hsl(var(--slider-glow)), 0 1px 4px hsl(var(--slider-thumb-shadow));
+	}
+
+	input[type="range"]::-moz-range-thumb:active {
+		transform: scale(1.2);
+	}
+}
+
+@keyframes indeterminate-progress {
+	0% {
+		transform: translateX(-150%);
+	}
+
+	60% {
+		transform: translateX(270%);
+	}
+
+	100% {
+		transform: translateX(270%);
+	}
+}
+
+
+

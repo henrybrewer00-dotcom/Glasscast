@@ -1,0 +1,659 @@
+/*
+ * STUDIO BLACK HUD — "ORB THAT BLOOMS"
+ * IDLE: a matte-black circular orb with a centered red dot.
+ * BLOOMED: a compact vertical cluster panel.
+ * RECORDING: a compact horizontal capsule (red dot + timer + stop).
+ *
+ * Flat fills, 1px hairlines, almost no blur. Monospace for all numbers/timecodes.
+ */
+
+.monoFont {
+	font-family: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+}
+
+.electronDrag {
+	-webkit-app-region: drag;
+}
+
+.electronNoDrag {
+	-webkit-app-region: no-drag;
+}
+
+/* ============================================================= ORB (IDLE) === */
+
+.orb {
+	position: relative;
+	width: auto;
+	min-width: 48px;
+	height: 46px;
+	border-radius: 23px;
+	padding: 0 18px;
+	gap: 10px;
+	/* Always the dark Studio-Black look (NOT theme-dependent) so the launcher is
+	   high-contrast and on-brand on any desktop wallpaper. */
+	background: #16161a;
+	border: 1px solid rgba(255, 255, 255, 0.18);
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	flex-shrink: 0;
+	transition:
+		border-color 0.18s ease-out,
+		background 0.18s ease-out;
+	/* subtle red ambient glow */
+	box-shadow:
+		0 0 0 1px rgba(0, 0, 0, 0.4),
+		0 2px 14px -2px rgba(0, 0, 0, 0.5),
+		0 0 24px -6px rgba(255, 59, 48, 0.55);
+}
+.orbLabel {
+	font-size: 13px;
+	font-weight: 600;
+	letter-spacing: 0.01em;
+	color: #f5f5f6;
+	white-space: nowrap;
+	user-select: none;
+}
+
+.orb:hover {
+	border-color: var(--launch-accent);
+}
+
+.orb:focus-visible {
+	outline: 2px solid var(--launch-focus-ring);
+	outline-offset: 2px;
+}
+
+.orbDot {
+	width: 14px;
+	height: 14px;
+	border-radius: 50%;
+	background: var(--launch-record, #ff3b30);
+	box-shadow: 0 0 8px -1px rgba(255, 59, 48, 0.8);
+	transition: background 0.18s ease-out;
+	flex-shrink: 0;
+}
+
+.orb:hover .orbDot {
+	background: var(--launch-record-hover);
+}
+
+/* Finalizing — orb with white spinner ring */
+.orbSpinner {
+	position: absolute;
+	inset: 4px;
+	border-radius: 50%;
+	border: 2px solid rgba(255, 255, 255, 0.16);
+	border-top-color: #ffffff;
+	animation: orbSpin 0.9s linear infinite;
+}
+
+@keyframes orbSpin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+/* ========================================================= CLUSTER (BLOOM) === */
+
+.cluster {
+	width: 280px;
+	background: var(--launch-bar-bg);
+	border: 1px solid var(--launch-bar-border);
+	border-radius: 12px;
+	box-shadow: var(--launch-bar-shadow);
+	backdrop-filter: blur(12px) saturate(140%);
+	-webkit-backdrop-filter: blur(12px) saturate(140%);
+	overflow: hidden;
+	transform-origin: bottom center;
+	pointer-events: auto;
+}
+
+/* Top hairline strip with corner micro-buttons */
+.clusterStrip {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 6px;
+	padding: 6px 8px;
+	border-bottom: 1px solid var(--launch-hairline);
+}
+
+.clusterStripLabel {
+	font-size: 10px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.14em;
+	color: var(--launch-label);
+	user-select: none;
+}
+
+.clusterStripActions {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+}
+
+.microBtn {
+	width: 24px;
+	height: 24px;
+	border-radius: 6px;
+	border: none;
+	background: transparent;
+	color: var(--launch-text-muted);
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	transition:
+		background 0.15s ease-out,
+		color 0.15s ease-out;
+}
+
+.microBtn:hover {
+	background: var(--launch-hover);
+	color: var(--launch-text);
+}
+
+.microBtn:focus-visible {
+	outline: 2px solid var(--launch-focus-ring);
+	outline-offset: -1px;
+}
+
+.clusterBody {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	padding: 12px;
+}
+
+/* Row 1 — source selector chip */
+.clusterRow {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+/* Row 2 — toggle row: 36px square hairline buttons */
+.toggleRow {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.toggleBtn {
+	position: relative;
+	width: 36px;
+	height: 36px;
+	border-radius: 6px;
+	border: 1px solid var(--launch-border-strong, rgba(255, 255, 255, 0.16));
+	background: var(--launch-surface-raised, #1f1f24);
+	color: var(--launch-text, #f5f5f6);
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	transition:
+		background 0.15s ease-out,
+		color 0.15s ease-out,
+		border-color 0.15s ease-out;
+	flex-shrink: 0;
+}
+
+.toggleBtn:hover {
+	background: var(--launch-hover);
+	color: var(--launch-text);
+	border-color: var(--launch-border-strong);
+}
+
+.toggleBtn:focus-visible {
+	outline: 2px solid var(--launch-focus-ring);
+	outline-offset: 1px;
+}
+
+/* active = white icon + red underline tick */
+.toggleBtnActive {
+	color: #ffffff;
+	border-color: var(--launch-border-strong);
+}
+
+.toggleBtnActive::after {
+	content: "";
+	position: absolute;
+	bottom: 4px;
+	left: 50%;
+	transform: translateX(-50%);
+	width: 14px;
+	height: 2px;
+	border-radius: 1px;
+	background: var(--launch-record);
+}
+
+/* Row 3 — big REC capsule */
+.recCapsule {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 9px;
+	width: 100%;
+	height: 44px;
+	border-radius: 6px;
+	border: none;
+	background: var(--launch-record);
+	color: #ffffff;
+	cursor: pointer;
+	font-size: 12px;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.18em;
+	transition: background 0.15s ease-out;
+}
+
+.recCapsule:hover {
+	background: var(--launch-record-hover);
+}
+
+.recCapsule:active {
+	background: var(--launch-record-pressed);
+}
+
+.recCapsule:disabled {
+	background: var(--launch-record);
+	opacity: 0.4;
+	cursor: not-allowed;
+}
+
+.recCapsuleDot {
+	width: 12px;
+	height: 12px;
+	border-radius: 50%;
+	background: #ffffff;
+}
+
+/* Source chip trigger (reused by SourcePopover) */
+.sourceChip {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	min-width: 0;
+	height: 36px;
+	padding: 0 10px;
+	border-radius: 6px;
+	border: 1px solid var(--launch-hairline);
+	background: var(--launch-surface);
+	color: var(--launch-text);
+	cursor: pointer;
+	font-size: 12px;
+	font-weight: 500;
+	transition:
+		background 0.15s ease-out,
+		border-color 0.15s ease-out;
+}
+
+.sourceChip:hover {
+	background: var(--launch-hover);
+	border-color: var(--launch-border-strong);
+}
+
+.sourceChipActive {
+	border-color: var(--launch-border-strong);
+	background: var(--launch-hover);
+}
+
+.sourceChip:focus-visible {
+	outline: 2px solid var(--launch-focus-ring);
+	outline-offset: 1px;
+}
+
+/* ================================================= RECORDING CAPSULE ========= */
+
+.recordingCapsule {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	height: 44px;
+	padding: 0 8px 0 2px;
+	background: var(--launch-bar-bg);
+	border: 1px solid var(--launch-bar-border);
+	border-radius: 8px;
+	box-shadow: var(--launch-bar-shadow);
+	pointer-events: auto;
+}
+
+/* Explicit drag grip — small, on the left edge. The ONLY drag region. */
+.recordingGrip {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	align-self: stretch;
+	width: 20px;
+	flex-shrink: 0;
+	color: var(--launch-text-disabled);
+	border-radius: 6px;
+	touch-action: none;
+	transition: color 0.15s ease-out;
+}
+
+.recordingGrip:hover {
+	color: var(--launch-text-muted);
+}
+
+/* Interactive controls cluster — isolated from the grip's drag handlers. */
+.recordingControls {
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.recordingDot {
+	width: 8px;
+	height: 8px;
+	border-radius: 50%;
+	background: var(--launch-record);
+	flex-shrink: 0;
+}
+
+.recordingDotPaused {
+	background: var(--launch-text-muted);
+	animation: none;
+}
+
+.recordingTimer {
+	font-family: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+	font-size: 13px;
+	font-weight: 600;
+	letter-spacing: 0.02em;
+	color: var(--launch-text);
+	min-width: 56px;
+	text-align: center;
+}
+
+.recordingTimerPaused {
+	color: var(--launch-text-muted);
+}
+
+.recordingSep {
+	width: 1px;
+	height: 22px;
+	background: var(--launch-hairline);
+	flex-shrink: 0;
+}
+
+/* Stop button with thin progress ring */
+.stopBtn {
+	position: relative;
+	width: 36px;
+	height: 36px;
+	border-radius: 6px;
+	border: none;
+	background: transparent;
+	color: var(--launch-record);
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	transition: background 0.15s ease-out;
+}
+
+.stopBtn:hover {
+	background: var(--launch-hover);
+}
+
+.stopBtn:focus-visible {
+	outline: 2px solid var(--launch-focus-ring);
+	outline-offset: -1px;
+}
+
+.recCtrlBtn {
+	width: 36px;
+	height: 36px;
+	border-radius: 6px;
+	border: none;
+	background: transparent;
+	color: var(--launch-text-muted);
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	transition:
+		background 0.15s ease-out,
+		color 0.15s ease-out;
+}
+
+.recCtrlBtn:hover {
+	background: var(--launch-hover);
+	color: var(--launch-text);
+}
+
+.recCtrlBtn:disabled {
+	color: var(--launch-text-disabled);
+	cursor: not-allowed;
+}
+
+.recCtrlBtn:focus-visible {
+	outline: 2px solid var(--launch-focus-ring);
+	outline-offset: -1px;
+}
+
+.recCtrlBtnActive {
+	color: #ffffff;
+}
+
+/* ============================================== POPOVER / DROPDOWN CARDS ===== */
+
+.menuCard {
+	width: 300px;
+	max-height: 400px;
+	overflow-y: auto;
+	background: var(--launch-surface);
+	border: 1px solid var(--launch-border);
+	border-radius: 8px;
+	backdrop-filter: blur(var(--launch-popover-blur, 14px))
+		saturate(var(--launch-popover-saturate, 120%));
+	-webkit-backdrop-filter: blur(var(--launch-popover-blur, 14px))
+		saturate(var(--launch-popover-saturate, 120%));
+	padding: 6px;
+	margin-top: auto;
+	margin-bottom: 8px;
+	box-shadow: var(--launch-bar-shadow);
+	pointer-events: auto;
+	animation: menuCardIn 0.16s ease-out;
+}
+
+@keyframes menuCardIn {
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+.menuCard::-webkit-scrollbar {
+	width: 4px;
+}
+
+.menuCard::-webkit-scrollbar-track {
+	background: transparent;
+}
+
+.menuCard::-webkit-scrollbar-thumb {
+	background: var(--launch-border-strong);
+	border-radius: 10px;
+}
+
+.ddLabel {
+	font-size: 10px;
+	font-weight: 600;
+	color: var(--launch-label);
+	text-transform: uppercase;
+	letter-spacing: 0.14em;
+	padding: 6px 10px 4px;
+}
+
+.ddItem {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	padding: 8px 10px;
+	border-radius: 6px;
+	border: none;
+	background: transparent;
+	font-size: 12px;
+	color: var(--launch-text-muted);
+	cursor: pointer;
+	transition:
+		background 0.15s ease-out,
+		color 0.15s ease-out;
+	text-align: left;
+}
+
+.ddItem:hover {
+	background: var(--launch-hover);
+	color: var(--launch-text);
+}
+
+.ddItemSelected {
+	background: var(--launch-selected);
+	color: var(--launch-accent);
+}
+
+/* Legacy icon-button styles retained for popover triggers that still use them */
+.ib {
+	position: relative;
+	width: 40px;
+	height: 40px;
+	border-radius: 6px;
+	border: none;
+	background: transparent;
+	color: var(--launch-text-muted);
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	transition:
+		background 0.15s ease-out,
+		color 0.15s ease-out;
+	flex-shrink: 0;
+}
+
+.ib:hover {
+	background: var(--launch-hover);
+	color: var(--launch-text);
+}
+
+.ibActive {
+	color: #ffffff;
+}
+
+.ibActive:hover {
+	color: #ffffff;
+}
+
+.ibRed {
+	color: var(--launch-record);
+}
+
+.ibRed:hover {
+	color: var(--launch-record-hover);
+}
+
+/* ============================================================ FINALIZING ===== */
+
+.finalizingState {
+	display: inline-flex;
+	align-items: center;
+	gap: 11px;
+	color: var(--launch-text);
+}
+
+.finalizingSpin {
+	color: #ffffff;
+	animation: finalizingSpin 0.9s linear infinite;
+}
+
+.finalizingCopy {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+	font-size: 12px;
+	font-weight: 600;
+	line-height: 1.15;
+}
+
+.finalizingCopy small {
+	color: var(--launch-text-muted);
+	font-size: 10px;
+	font-weight: 500;
+}
+
+@keyframes finalizingSpin {
+	from {
+		transform: rotate(0deg);
+	}
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+.recDotBlink {
+	animation: blink 1.2s ease-in-out infinite;
+}
+
+@keyframes blink {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.2;
+	}
+}
+
+/* ====================================================== WEBCAM PREVIEW ======= */
+
+.recordingWebcamPreview {
+	position: fixed;
+	right: 32px;
+	bottom: 120px;
+	height: 240px;
+	width: 240px;
+	overflow: hidden;
+	border-radius: 12px;
+	background: var(--launch-surface);
+	border: 1px solid var(--launch-border-strong);
+	box-shadow: var(--launch-bar-shadow);
+	cursor: grab;
+	touch-action: none;
+	user-select: none;
+	will-change: transform;
+	z-index: 120;
+}
+
+.recordingWebcamPreview:active {
+	cursor: grabbing;
+}
+
+.recordingWebcamPreviewVideo {
+	display: block;
+	height: 100%;
+	width: 100%;
+	object-fit: cover;
+	border-radius: inherit;
+	overflow: hidden;
+	transform: translateZ(0);
+}
+
+.micSelect {
+	color-scheme: dark;
+}
+
+.micSelect option {
+	background-color: #131316;
+	color: #f5f5f6;
+}
