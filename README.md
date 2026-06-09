@@ -176,6 +176,36 @@ https://github.com/henrybrewer00-dotcom/Glasscast/releases
 
 ## Build from source
 
+### Recommended: set it up with an AI agent
+
+Glasscast is a large Electron + native project, so the fastest way to get it running is to let a coding agent (Claude Code, Cursor, Codex, etc.) drive the setup. Clone the repo, open your agent **in the project root**, and paste this prompt:
+
+```text
+Set up and run Glasscast — this is an Electron + Vite + React + TypeScript desktop app.
+
+1. Check prerequisites: Node.js 20+, and on macOS the Xcode Command Line Tools
+   (run `xcode-select -p`; if it errors, tell me to run `xcode-select --install`).
+   On Linux/Windows, install the build prerequisites listed in this README.
+2. Run `npm install`. Its `postinstall` step compiles native helpers — if that
+   fails, read the error and fix the missing toolchain rather than skipping it.
+3. Start the app in dev with `npm run dev`. If I want a packaged installer
+   instead, run `npm run build:mac` (or `build:win` / `build:linux`) and tell me
+   where it landed (the `release/` folder).
+4. Run `npm test` and confirm the suite passes.
+5. Tell me how to grant Screen Recording permission the first time I record:
+   System Settings → Privacy & Security → Screen Recording → enable Glasscast,
+   then relaunch the app.
+6. Explain bring-your-own-key AI: Glasscast ships no API keys. In the editor open
+   the "AI Keys" tab to add an OpenAI, Anthropic, or OpenRouter key for the AI
+   agent, and add a captions key (OpenAI / Groq / Deepgram) or use local Whisper.
+   Keys are stored encrypted on-device and are never committed.
+
+Don't commit anything or add new dependencies without asking me first. If a step
+fails, show me the exact error and your proposed fix before continuing.
+```
+
+Prefer doing it by hand? The manual steps are right below.
+
 ### Prerequisites
 
 **macOS:** Xcode Command Line Tools (`xcode-select --install`).
