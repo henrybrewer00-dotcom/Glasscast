@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -64,6 +65,10 @@ export async function transcribeWithLocalWhisper(
 
 	const language =
 		options.language && options.language.trim() ? options.language.trim() : "auto";
+	// Leave headroom for the UI: cap whisper's worker threads to half the cores
+	// and run the process at low scheduling priority, otherwise transcription
+	// saturates the machine and the app feels frozen.
+	const threadCount = Math.max(2, Math.floor(os.cpus().length / 2));
 	const whisperBaseArgs = [
 		"-m",
 		whisperModelPath,
@@ -74,16 +79,25 @@ export async function transcribeWithLocalWhisper(
 		outputBase,
 		"-l",
 		language,
+		"-t",
+		String(threadCount),
 		"-np",
 	];
+	const useNice = process.platform === "darwin" || process.platform === "linux";
+	const runWhisper = (args: string[]) =>
+		execFileAsync(
+			useNice ? "/usr/bin/nice" : whisperExecutablePath,
+			useNice ? ["-n", "15", whisperExecutablePath, ...args] : args,
+			{
+				timeout: 30 * 60 * 1000,
+				maxBuffer: 20 * 1024 * 1024,
+			},
+		);
 
 	try {
 		let jsonEnabled = true;
 		try {
-			await execFileAsync(whisperExecutablePath, [...whisperBaseArgs, "-ojf"], {
-				timeout: 30 * 60 * 1000,
-				maxBuffer: 20 * 1024 * 1024,
-			});
+			await runWhisper([...whisperBaseArgs, "-ojf"]);
 		} catch (error) {
 			if (!shouldRetryWhisperWithoutJson(error)) {
 				throw error;
@@ -94,10 +108,7 @@ export async function transcribeWithLocalWhisper(
 				"[auto-captions] Whisper runtime does not support JSON full output, retrying with SRT only:",
 				error,
 			);
-			await execFileAsync(whisperExecutablePath, whisperBaseArgs, {
-				timeout: 30 * 60 * 1000,
-				maxBuffer: 20 * 1024 * 1024,
-			});
+			await runWhisper(whisperBaseArgs);
 		}
 
 		const timedCues = jsonEnabled

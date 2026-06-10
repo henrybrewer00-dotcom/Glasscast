@@ -107,12 +107,23 @@ export function downloadFileWithProgress(
 					10,
 				);
 				let downloadedBytes = 0;
+				// Only report whole-percent changes. Reporting every network chunk
+				// floods the renderer with tens of thousands of IPC messages on a
+				// multi-GB model and freezes the UI.
+				let lastReportedPercent = -1;
 				const fileStream = createWriteStream(destinationPath);
 
 				response.on("data", (chunk: Buffer) => {
 					downloadedBytes += chunk.length;
 					if (Number.isFinite(totalBytes) && totalBytes > 0) {
-						onProgress(Math.min(100, Math.round((downloadedBytes / totalBytes) * 100)));
+						const percent = Math.min(
+							100,
+							Math.round((downloadedBytes / totalBytes) * 100),
+						);
+						if (percent !== lastReportedPercent) {
+							lastReportedPercent = percent;
+							onProgress(percent);
+						}
 					}
 				});
 

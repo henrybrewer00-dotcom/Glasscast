@@ -2683,8 +2683,18 @@ export default function VideoEditor() {
 
 	useEffect(() => {
 		const unsubscribe = window.electronAPI.onCaptionModelDownloadProgress((state) => {
-			setWhisperModels((current) =>
-				current.map((model) =>
+			setWhisperModels((current) => {
+				const existing = current.find((model) => model.id === state.modelId);
+				// Skip no-op updates so progress events can't re-render the editor
+				// when nothing visible changed.
+				if (
+					existing &&
+					existing.status === state.status &&
+					existing.progress === state.progress
+				) {
+					return current;
+				}
+				return current.map((model) =>
 					model.id === state.modelId
 						? {
 								...model,
@@ -2698,8 +2708,8 @@ export default function VideoEditor() {
 											: model.path,
 							}
 						: model,
-				),
-			);
+				);
+			});
 			if (state.status === "error" && state.error) {
 				toast.error(state.error);
 			}
