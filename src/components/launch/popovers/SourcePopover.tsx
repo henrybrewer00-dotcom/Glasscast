@@ -32,7 +32,7 @@ export function SourcePopover({
 		try {
 			const rawSources = await window.electronAPI.getSources({
 				types: ["screen", "window"],
-				thumbnailSize: { width: 160, height: 90 },
+				thumbnailSize: { width: 320, height: 180 },
 				fetchWindowIcons: true,
 			});
 			setSources(rawSources.map((s) => mapRawSource(s as DesktopSource)));

@@ -1,22 +1,30 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import styles from "./CountdownOverlay.module.css";
 
 export function CountdownOverlay() {
 	const [countdown, setCountdown] = useState<number | null>(null);
+	const prevRef = useRef<number | null>(null);
+	const [prev, setPrev] = useState<number | null>(null);
+
+	const applyTick = useCallback((seconds: number) => {
+		setPrev(prevRef.current);
+		prevRef.current = seconds;
+		setCountdown(seconds);
+	}, []);
 
 	useEffect(() => {
 		void window.electronAPI.getActiveCountdown().then((result) => {
 			if (result.success && typeof result.seconds === "number") {
-				setCountdown(result.seconds);
+				applyTick(result.seconds);
 			}
 		});
 
 		const cleanup = window.electronAPI.onCountdownTick((seconds: number) => {
-			setCountdown(seconds);
+			applyTick(seconds);
 		});
 
 		return cleanup;
-	}, []);
+	}, [applyTick]);
 
 	const handleCancel = useCallback(() => {
 		window.electronAPI.cancelCountdown();
@@ -47,22 +55,23 @@ export function CountdownOverlay() {
 			onKeyDown={(e) => e.key === "Escape" && handleCancel()}
 		>
 			<div className={styles.stage}>
-				<svg className={styles.ring} viewBox="0 0 240 240" aria-hidden="true">
-					<title>Countdown ring</title>
-					<circle className={styles.ringTrack} cx="120" cy="120" r="110" />
-					{/* key re-mounts the circle each tick so the deplete animation replays */}
-					<circle key={countdown} className={styles.ringProgress} cx="120" cy="120" r="110" />
-				</svg>
-				<div className={styles.disc}>
-					<span key={countdown} className={styles.number}>
-						{countdown}
+				<div key={`glow-${countdown}`} className={styles.glow} />
+				{prev !== null && prev !== countdown ? (
+					<span key={`out-${prev}`} className={styles.numberOut} aria-hidden="true">
+						{prev}
 					</span>
-				</div>
+				) : null}
+				<span key={`in-${countdown}`} className={styles.number}>
+					{countdown}
+				</span>
 			</div>
-			<p className={styles.hint}>
+			<div className={styles.hintPill}>
 				<span className={styles.recDot} />
-				Recording starts soon · Esc to cancel
-			</p>
+				<span className={styles.hintText}>Recording in {countdown}</span>
+				<span className={styles.hintDivider} />
+				<span className={styles.hintKey}>Esc</span>
+				<span className={styles.hintText}>to cancel</span>
+			</div>
 		</div>
 	);
 }

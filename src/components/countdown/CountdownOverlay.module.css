@@ -5,7 +5,7 @@
 	flex-direction: column;
 	align-items: center;
 	justify-content: center;
-	gap: 22px;
+	gap: 34px;
 	user-select: none;
 	cursor: pointer;
 	background: transparent;
@@ -13,107 +13,149 @@
 
 .stage {
 	position: relative;
-	width: 240px;
-	height: 240px;
-	animation: rise 0.4s cubic-bezier(0.2, 0.9, 0.25, 1.05);
-}
-
-/* The depleting timer ring sweeps the record-red stroke away over each second. */
-.ring {
-	position: absolute;
-	inset: 0;
-	transform: rotate(-90deg);
-}
-
-.ringTrack {
-	fill: none;
-	stroke: rgba(255, 255, 255, 0.08);
-	stroke-width: 7;
-}
-
-.ringProgress {
-	fill: none;
-	stroke: #ff3b30;
-	stroke-width: 7;
-	stroke-linecap: round;
-	/* 2 * pi * r (r = 110) */
-	stroke-dasharray: 691.15;
-	filter: drop-shadow(0 0 9px rgba(255, 59, 48, 0.75));
-	animation: deplete 1s linear forwards;
-}
-
-@keyframes deplete {
-	from {
-		stroke-dashoffset: 0;
-	}
-	to {
-		stroke-dashoffset: 691.15;
-	}
-}
-
-.disc {
-	position: absolute;
-	inset: 20px;
-	border-radius: 50%;
-	background: radial-gradient(circle at 50% 32%, #1c1c20, #0a0a0b 72%);
-	border: 1px solid rgba(255, 255, 255, 0.08);
-	box-shadow:
-		0 24px 70px -12px rgba(0, 0, 0, 0.75),
-		0 0 70px -12px rgba(255, 59, 48, 0.45),
-		inset 0 1px 0 rgba(255, 255, 255, 0.07);
+	width: 360px;
+	height: 320px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	overflow: hidden;
-	backdrop-filter: blur(22px);
-	-webkit-backdrop-filter: blur(22px);
 }
 
-.number {
-	font-size: 116px;
-	line-height: 1;
-	font-weight: 700;
-	letter-spacing: -0.02em;
-	color: #fff;
-	font-variant-numeric: tabular-nums;
-	text-shadow: 0 0 44px rgba(255, 255, 255, 0.28);
-	animation: pop 0.45s cubic-bezier(0.2, 0.9, 0.25, 1.12);
+/* Soft red halo that flares on every tick, then settles. */
+.glow {
+	position: absolute;
+	width: 300px;
+	height: 300px;
+	border-radius: 50%;
+	background: radial-gradient(
+		circle,
+		rgba(255, 59, 48, 0.4) 0%,
+		rgba(255, 59, 48, 0.14) 42%,
+		transparent 70%
+	);
+	filter: blur(28px);
+	animation: flare 1s cubic-bezier(0.2, 0.8, 0.3, 1) forwards;
 }
 
-@keyframes pop {
+@keyframes flare {
 	0% {
-		transform: scale(1.65);
-		opacity: 0;
+		transform: scale(1.25);
+		opacity: 1;
 	}
-	45% {
+	100% {
+		transform: scale(0.82);
+		opacity: 0.5;
+	}
+}
+
+/* Incoming digit: snaps in from depth with a blur settle. */
+.number {
+	position: absolute;
+	font-size: 230px;
+	line-height: 1;
+	font-weight: 800;
+	letter-spacing: -0.04em;
+	font-variant-numeric: tabular-nums;
+	background: linear-gradient(180deg, #ffffff 30%, #d9d9de 100%);
+	-webkit-background-clip: text;
+	background-clip: text;
+	color: transparent;
+	filter: drop-shadow(0 6px 30px rgba(0, 0, 0, 0.55))
+		drop-shadow(0 0 26px rgba(255, 59, 48, 0.22));
+	animation: snapIn 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes snapIn {
+	0% {
+		transform: scale(0.55);
+		opacity: 0;
+		filter: blur(16px);
+	}
+	60% {
 		opacity: 1;
 	}
 	100% {
 		transform: scale(1);
 		opacity: 1;
+		filter: blur(0px);
 	}
 }
 
-@keyframes rise {
+/* Outgoing digit: zooms toward the viewer and dissolves. */
+.numberOut {
+	position: absolute;
+	font-size: 230px;
+	line-height: 1;
+	font-weight: 800;
+	letter-spacing: -0.04em;
+	font-variant-numeric: tabular-nums;
+	color: rgba(255, 255, 255, 0.9);
+	animation: zoomOut 0.5s cubic-bezier(0.4, 0, 0.9, 0.6) forwards;
+	pointer-events: none;
+}
+
+@keyframes zoomOut {
+	0% {
+		transform: scale(1);
+		opacity: 0.55;
+		filter: blur(0px);
+	}
+	100% {
+		transform: scale(1.8);
+		opacity: 0;
+		filter: blur(22px);
+	}
+}
+
+/* Glass pill hint */
+.hintPill {
+	display: flex;
+	align-items: center;
+	gap: 9px;
+	padding: 9px 16px;
+	border-radius: 999px;
+	background: rgba(12, 12, 14, 0.72);
+	border: 1px solid rgba(255, 255, 255, 0.1);
+	box-shadow: 0 12px 40px -10px rgba(0, 0, 0, 0.7);
+	backdrop-filter: blur(18px);
+	-webkit-backdrop-filter: blur(18px);
+	animation: pillRise 0.5s cubic-bezier(0.2, 0.9, 0.25, 1.05);
+}
+
+@keyframes pillRise {
 	from {
-		transform: scale(0.9) translateY(10px);
+		transform: translateY(12px);
 		opacity: 0;
 	}
 	to {
-		transform: scale(1) translateY(0);
+		transform: translateY(0);
 		opacity: 1;
 	}
 }
 
-.hint {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	font-size: 12px;
+.hintText {
+	font-size: 12.5px;
 	font-weight: 500;
-	letter-spacing: 0.04em;
-	color: rgba(255, 255, 255, 0.55);
-	text-shadow: 0 1px 8px rgba(0, 0, 0, 0.6);
+	letter-spacing: 0.02em;
+	color: rgba(255, 255, 255, 0.78);
+	font-variant-numeric: tabular-nums;
+}
+
+.hintDivider {
+	width: 1px;
+	height: 14px;
+	background: rgba(255, 255, 255, 0.16);
+}
+
+.hintKey {
+	font-size: 10.5px;
+	font-weight: 600;
+	letter-spacing: 0.05em;
+	color: rgba(255, 255, 255, 0.85);
+	padding: 2.5px 7px;
+	border-radius: 5px;
+	background: rgba(255, 255, 255, 0.1);
+	border: 1px solid rgba(255, 255, 255, 0.14);
+	box-shadow: 0 1.5px 0 rgba(255, 255, 255, 0.08) inset;
 }
 
 .recDot {
@@ -121,7 +163,7 @@
 	height: 8px;
 	border-radius: 50%;
 	background: #ff3b30;
-	box-shadow: 0 0 8px rgba(255, 59, 48, 0.9);
+	box-shadow: 0 0 10px rgba(255, 59, 48, 0.9);
 	animation: blink 1s ease-in-out infinite;
 }
 

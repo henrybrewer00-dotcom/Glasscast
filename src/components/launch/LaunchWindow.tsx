@@ -181,6 +181,9 @@ function LaunchWindowContent() {
 			isHudDraggingRef,
 			isWebcamPreviewDraggingRef,
 			webcamPreviewDragStartRef,
+			onMouseAway: () => {
+				if (openId) requestClose(openId);
+			},
 		});
 
 	useEffect(() => {
@@ -302,19 +305,19 @@ function LaunchWindowContent() {
 				className={`${styles.clusterStrip} cursor-grab active:cursor-grabbing ${
 					useNativeHudBarDrag ? styles.electronDrag : ""
 				}`}
-				onPointerDown={handleHudBarPointerDown}
+				onPointerDown={(event) => {
+					// Pressing an interactive control (popover triggers, hide/close)
+					// must not start a window drag, or the click never lands and Radix
+					// popover triggers (folder, 3-dots) never open.
+					if ((event.target as HTMLElement).closest("button")) return;
+					handleHudBarPointerDown(event);
+				}}
 				onPointerMove={handleHudBarPointerMove}
 				onPointerUp={handleHudBarPointerUp}
 				onPointerCancel={handleHudBarPointerUp}
 			>
 				<span className={styles.clusterStripLabel}>{t("recording.rec", "REC")}</span>
-				<div
-					className={`${styles.clusterStripActions} ${styles.electronNoDrag}`}
-					// The strip is a JS drag region; without this, pointer-down on a
-					// micro-button starts a drag capture and the click never lands.
-					onPointerDown={(event) => event.stopPropagation()}
-					onPointerUp={(event) => event.stopPropagation()}
-				>
+				<div className={`${styles.clusterStripActions} ${styles.electronNoDrag}`}>
 					<div className="relative">
 						<ProjectPopover
 							entries={projectLibraryEntries}
@@ -574,7 +577,13 @@ function LaunchWindowContent() {
 				}`}
 				title={t("recording.move", "Move")}
 				aria-label={t("recording.move", "Move")}
-				onPointerDown={handleHudBarPointerDown}
+				onPointerDown={(event) => {
+					// Pressing an interactive control (popover triggers, hide/close)
+					// must not start a window drag, or the click never lands and Radix
+					// popover triggers (folder, 3-dots) never open.
+					if ((event.target as HTMLElement).closest("button")) return;
+					handleHudBarPointerDown(event);
+				}}
 				onPointerMove={handleHudBarPointerMove}
 				onPointerUp={handleHudBarPointerUp}
 				onPointerCancel={handleHudBarPointerUp}

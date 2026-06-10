@@ -7,27 +7,28 @@
  */
 
 .launch-theme {
-	/* LIGHT THEME (secondary) — warm neutral-gray */
-	--launch-bg: #f5f5f4;
-	--launch-surface: #ffffff;
-	--launch-surface-raised: #fafafa;
-	--launch-panel: #fafafa;
-	--launch-border: #e4e4e2;
-	--launch-border-strong: #d2d2cf;
-	--launch-hairline: #e4e4e2;
-	--launch-text: #1a1a1c;
-	--launch-text-muted: #77777e;
-	--launch-text-disabled: #b4b4b0;
-	--launch-label: #77777e;
-	--launch-hover: rgba(0, 0, 0, 0.04);
-	--launch-selected: rgba(255, 59, 48, 0.12);
+	/* DARK THEME (primary) — Studio Black. The launcher is always dark; the old
+	   light defaults made white icons/text invisible on the HUD. */
+	--launch-bg: #0a0a0b;
+	--launch-surface: #131316;
+	--launch-surface-raised: #1a1a1e;
+	--launch-panel: #1a1a1e;
+	--launch-border: #26262b;
+	--launch-border-strong: #34343b;
+	--launch-hairline: #26262b;
+	--launch-text: #f5f5f6;
+	--launch-text-muted: #8a8a93;
+	--launch-text-disabled: #4a4a52;
+	--launch-label: #8a8a93;
+	--launch-hover: rgba(255, 255, 255, 0.05);
+	--launch-selected: rgba(255, 59, 48, 0.25);
 
 	/* RECORD RED — the only hue */
 	--launch-accent: #ff3b30;
 	--launch-accent-hover: #ff5247;
 	--launch-accent-pressed: #d92e24;
 	--launch-accent-glow: #ff5247;
-	--launch-accent-soft: rgba(255, 59, 48, 0.1);
+	--launch-accent-soft: rgba(255, 59, 48, 0.16);
 
 	--launch-record: #ff3b30;
 	--launch-record-hover: #ff5247;
@@ -39,10 +40,10 @@
 	--launch-popover-blur: 14px;
 	--launch-popover-saturate: 120%;
 
-	--launch-bar-bg: #ffffff;
-	--launch-bar-border: #e4e4e2;
+	--launch-bar-bg: #131316;
+	--launch-bar-border: #26262b;
 	/* Hairlines instead of shadows; a faint lift only */
-	--launch-bar-shadow: 0 1px 0 0 rgba(0, 0, 0, 0.02), 0 8px 24px -16px rgba(0, 0, 0, 0.18);
+	--launch-bar-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.02), 0 16px 40px -24px rgba(0, 0, 0, 0.7);
 
 	color: var(--launch-text);
 }

@@ -89,6 +89,29 @@ export const SourceSelectorContent = ({
 >) => {
 	const t = useScopedT("launch");
 
+	// Screen Recording permission gate: without it, macOS hides the user's windows
+	// and returns null thumbnails (no previews). Detect it and prompt to fix.
+	const [screenPerm, setScreenPerm] = useState<string | null>(null);
+	useEffect(() => {
+		let cancelled = false;
+		const check = () => {
+			window.electronAPI
+				?.getScreenRecordingPermissionStatus?.()
+				.then((r: { status?: string }) => {
+					if (!cancelled) setScreenPerm(r?.status ?? null);
+				})
+				.catch(() => {});
+		};
+		check();
+		// re-check when the app regains focus (user may have just granted it)
+		window.addEventListener("focus", check);
+		return () => {
+			cancelled = true;
+			window.removeEventListener("focus", check);
+		};
+	}, []);
+	const needsScreenPermission = screenPerm !== null && screenPerm !== "granted";
+
 	// DISPLAYS — prominent rows: monitor icon + full label (no truncation),
 	// red ring when selected. Names like "Display 1 — 2560x1440" wrap, never clip.
 	const renderDisplayRow = (source: DesktopSource, index: number) => {
@@ -98,13 +121,13 @@ export const SourceSelectorContent = ({
 				key={`${source.id}-${index}`}
 				type="button"
 				className={cn(
-					"source-selector-display-row group w-full rounded-[10px] px-3 py-3 text-left flex items-center gap-3",
+					"source-selector-display-row group w-full rounded-[12px] p-2.5 text-left flex flex-col gap-2",
 					isSelected && "source-selector-display-row-selected",
 				)}
 				onClick={() => onSourceSelect(source)}
 				title={source.name}
 			>
-				<div className="relative flex-shrink-0 w-[88px] h-[50px] rounded-[8px] overflow-hidden bg-black/40 flex items-center justify-center source-selector-display-icon">
+				<div className="relative w-full aspect-video rounded-[8px] overflow-hidden bg-black/40 flex items-center justify-center source-selector-display-icon">
 					{source.thumbnail ? (
 						<img
 							src={source.thumbnail}
@@ -115,10 +138,10 @@ export const SourceSelectorContent = ({
 							}}
 						/>
 					) : (
-						<MonitorIcon className="w-5 h-5" weight={isSelected ? "fill" : "regular"} />
+						<MonitorIcon className="w-8 h-8" weight={isSelected ? "fill" : "regular"} />
 					)}
 				</div>
-				<span className="flex-1 min-w-0 text-sm font-semibold source-selector-text leading-snug break-words">
+				<span className="text-sm font-semibold source-selector-text leading-snug break-words px-0.5">
 					{source.name}
 				</span>
 			</button>
@@ -134,13 +157,13 @@ export const SourceSelectorContent = ({
 				key={`${source.id}-${index}`}
 				type="button"
 				className={cn(
-					"source-selector-item group min-h-[48px] w-full rounded-[10px] px-3 py-2.5 text-left font-medium flex items-center justify-start gap-3",
+					"source-selector-item group w-full rounded-[12px] p-2 text-left font-medium flex flex-col gap-1.5",
 					isSelected && "source-selector-item-selected",
 				)}
 				onClick={() => onSourceSelect(source)}
 				title={source.appName ? `${source.appName} — ${title}` : title}
 			>
-				<div className="relative flex-shrink-0 w-[64px] h-[40px] rounded-[6px] overflow-hidden bg-black/40 flex items-center justify-center">
+				<div className="relative w-full aspect-video rounded-[8px] overflow-hidden bg-black/40 flex items-center justify-center">
 					{source.thumbnail ? (
 						<img
 							src={source.thumbnail}
@@ -154,19 +177,19 @@ export const SourceSelectorContent = ({
 						<img
 							src={source.appIcon}
 							alt=""
-							className="w-7 h-7 object-contain"
+							className="w-12 h-12 object-contain"
 							onError={(e) => {
 								(e.target as HTMLImageElement).style.display = "none";
 							}}
 						/>
 					) : (
-						<AppWindowIcon className="w-4 h-4 source-selector-muted" />
+						<AppWindowIcon className="w-6 h-6 source-selector-muted" />
 					)}
 					{source.thumbnail && source.appIcon ? (
 						<img
 							src={source.appIcon}
 							alt=""
-							className="absolute bottom-0.5 right-0.5 w-4 h-4 rounded object-contain shadow"
+							className="absolute bottom-1 right-1 w-6 h-6 rounded object-contain shadow"
 							onError={(e) => {
 								(e.target as HTMLImageElement).style.display = "none";
 							}}
@@ -174,13 +197,13 @@ export const SourceSelectorContent = ({
 					) : null}
 				</div>
 
-				<div className="flex-1 min-w-0 flex flex-col items-start text-left gap-0.5">
+				<div className="min-w-0 flex flex-col items-start text-left gap-0 px-0.5">
 					{source.appName ? (
 						<span className="text-[11px] source-selector-subtle leading-tight truncate w-full text-left">
 							{source.appName}
 						</span>
 					) : null}
-					<span className="text-sm font-medium source-selector-text w-full text-left source-selector-window-title">
+					<span className="text-[13px] font-medium source-selector-text w-full text-left truncate">
 						{title}
 					</span>
 				</div>
@@ -199,7 +222,34 @@ export const SourceSelectorContent = ({
 	}
 
 	return (
-		<div className="p-2 max-h-[66vh] overflow-y-auto overflow-x-hidden source-selector-scroll">
+		<div className="p-3 max-h-[78vh] overflow-y-auto overflow-x-hidden source-selector-scroll">
+			{needsScreenPermission ? (
+				<div
+					className="mx-1 mb-2 rounded-[10px] p-3"
+					style={{
+						border: "1px solid rgba(255,59,48,0.45)",
+						background: "rgba(255,59,48,0.10)",
+					}}
+				>
+					<p className="text-[12px] font-semibold text-foreground">
+						{t("recording.permissionTitle", "Screen Recording is off")}
+					</p>
+					<p className="mt-1 text-[11px] source-selector-muted">
+						{t(
+							"recording.permissionBody",
+							"macOS is hiding your windows and previews. Enable Glasscast under Screen Recording, then it'll show everything.",
+						)}
+					</p>
+					<button
+						type="button"
+						onClick={() => window.electronAPI?.openScreenRecordingPreferences?.()}
+						className="mt-2 rounded-md px-3 py-1.5 text-[11px] font-semibold text-white"
+						style={{ background: "#ff3b30" }}
+					>
+						{t("recording.permissionOpen", "Open Settings →")}
+					</button>
+				</div>
+			) : null}
 			{hasAnySources ? (
 				<>
 					{screenSources.length > 0 ? (
@@ -215,7 +265,7 @@ export const SourceSelectorContent = ({
 									{t("common.loading", "Refreshing...")}
 								</span>
 							</div>
-							<div className="space-y-1">
+							<div className="grid grid-cols-3 gap-2">
 								{screenSources.map((source, index) =>
 									renderDisplayRow(source, index),
 								)}
@@ -227,7 +277,7 @@ export const SourceSelectorContent = ({
 							<div className="px-2 pt-1 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] source-selector-label">
 								{t("recording.windows")}
 							</div>
-							<div className="space-y-0.5 pr-0.5">
+							<div className="grid grid-cols-4 gap-2">
 								{windowSources.map((source, index) =>
 									renderWindowRow(source, index),
 								)}
@@ -279,7 +329,7 @@ export const SourceSelector = React.memo(function SourceSelector({
 		try {
 			const rawSources = await window.electronAPI.getSources({
 				types: ["screen", "window"],
-				thumbnailSize: { width: 160, height: 90 },
+				thumbnailSize: { width: 320, height: 180 },
 				fetchWindowIcons: true,
 			});
 			setInternalSources(rawSources.map((s) => mapRawSource(s as DesktopSource)));
@@ -412,16 +462,14 @@ export const SourceSelector = React.memo(function SourceSelector({
 		<Popover open={open} onOpenChange={onOpenChange} modal={false}>
 			<PopoverTrigger asChild>{trigger}</PopoverTrigger>
 			<PopoverContent
-				className="launch-theme w-[480px] max-w-[calc(100vw-24px)] p-0 source-selector-popover"
+				className="launch-theme w-[1040px] max-w-[calc(100vw-32px)] p-0 source-selector-popover"
 				data-hud-interactive
 				unstyled
-				align="start"
-				sideOffset={8}
+				align="center"
+				sideOffset={12}
 				side="top"
-				alignOffset={-8}
 				avoidCollisions={true}
-				collisionPadding={10}
-				usePortal={false}
+				collisionPadding={16}
 				onMouseEnter={onMouseEnter}
 			>
 				<SourceSelectorContent

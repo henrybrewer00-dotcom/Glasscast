@@ -5,15 +5,21 @@ export function useLaunchHudInteractionState({
 	isHudDraggingRef,
 	isWebcamPreviewDraggingRef,
 	webcamPreviewDragStartRef,
+	onMouseAway,
 }: {
 	openId: string | null;
 	isHudDraggingRef: RefObject<boolean>;
 	isWebcamPreviewDraggingRef: RefObject<boolean>;
 	webcamPreviewDragStartRef: RefObject<unknown>;
+	onMouseAway?: () => void;
 }) {
 	const isMouseOverHudRef = useRef(false);
 	const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 	const lastInteractiveReassertAtRef = useRef(0);
+	const openIdRef = useRef(openId);
+	openIdRef.current = openId;
+	const onMouseAwayRef = useRef(onMouseAway);
+	onMouseAwayRef.current = onMouseAway;
 
 	const setHudMouseInteractive = useCallback((force = false) => {
 		const now = performance.now();
@@ -64,6 +70,10 @@ export function useLaunchHudInteractionState({
 						!webcamPreviewDragStartRef.current &&
 						!isMouseOverHudRef.current
 					) {
+						// Close any open popover when the mouse roams away so the
+						// HUD goes back to click-through and clicks land on (and
+						// focus) whatever app is underneath.
+						if (openIdRef.current) onMouseAwayRef.current?.();
 						window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
 					}
 				}, 300);

@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { app, BrowserWindow, desktopCapturer, ipcMain } from "electron";
+import { app, BrowserWindow, desktopCapturer, ipcMain, systemPreferences } from "electron";
 import { reassertHudOverlayMousePassthrough } from "../../windows";
 import { ALLOW_GLASSCAST_WINDOW_CAPTURE } from "../constants";
 import {
@@ -62,14 +62,13 @@ export function registerSourceHandlers({
 		const includeScreens = Array.isArray(opts?.types) ? opts.types.includes("screen") : true;
 		const includeWindows = Array.isArray(opts?.types) ? opts.types.includes("window") : true;
 		const includeWindowIcons = Boolean(opts?.fetchWindowIcons);
-		const usesNativeMacWindows = process.platform === "darwin" && includeWindows;
+		// desktopCapturer enumerates windows AND captures their thumbnails (the live
+		// previews). On macOS this only works — and only returns the full window list
+		// — when Screen Recording permission is granted; without it macOS hands back a
+		// single degraded window and null thumbnails.
 		const electronTypes = [
 			...(includeScreens ? ["screen" as const] : []),
-			// On macOS the fast native helper provides the window list. Asking
-			// desktopCapturer to ALSO enumerate + thumbnail every window blocks the
-			// main process and freezes the UI, so we skip it here and only fall back
-			// to it (in the catch below) if the native call fails.
-			...(includeWindows && !usesNativeMacWindows ? ["window" as const] : []),
+			...(includeWindows ? ["window" as const] : []),
 		];
 		const electronSources =
 			electronTypes.length > 0
@@ -191,6 +190,9 @@ export function registerSourceHandlers({
 
 		try {
 			const nativeWindowSources = await getNativeMacWindowSources();
+			console.log(
+				`[get-sources] mac: screenPerm=${process.platform === "darwin" ? systemPreferences.getMediaAccessStatus("screen") : "n/a"} native=${nativeWindowSources.length} electron-windows=${electronSources.filter((s) => s.id.startsWith("window:")).length}`,
+			);
 			const electronWindowSourceMap = new Map(
 				electronSources
 					.filter((source) => source.id.startsWith("window:"))
@@ -255,7 +257,43 @@ export function registerSourceHandlers({
 					};
 				});
 
-			const result = [...screenSources, ...mergedWindowSources];
+			// UNION with desktopCapturer windows: the native helper is a SEPARATE
+			// process that often does not inherit Glasscast's Screen Recording
+			// permission, so it can return a degraded single-window list. Electron's
+			// desktopCapturer runs in-process and DOES get the app's permission, so
+			// add any windows it found that the native list missed — this is what
+			// makes the full window list (Chrome, etc.) and previews actually appear.
+			const nativeWindowIds = new Set(mergedWindowSources.map((s) => s.id));
+			const extraWindowSources = electronSources
+				.filter(
+					(source) => source.id.startsWith("window:") && !nativeWindowIds.has(source.id),
+				)
+				.filter((source) => {
+					const normalizedName = normalizeDesktopSourceName(source.name);
+					if (!normalizedName) return true;
+					if (ALLOW_GLASSCAST_WINDOW_CAPTURE && normalizedName.includes("glasscast")) {
+						return true;
+					}
+					for (const ownName of ownWindowNames) {
+						if (!ownName) continue;
+						if (normalizedName === ownName) return false;
+					}
+					return true;
+				})
+				.map((source) => ({
+					id: source.id,
+					name: source.name,
+					originalName: source.name,
+					display_id: source.display_id ?? "",
+					thumbnail: source.thumbnail ? source.thumbnail.toDataURL() : null,
+					appIcon:
+						includeWindowIcons && source.appIcon ? source.appIcon.toDataURL() : null,
+					appName: undefined,
+					windowTitle: source.name,
+					sourceType: "window" as const,
+				}));
+
+			const result = [...screenSources, ...mergedWindowSources, ...extraWindowSources];
 			sourceListCache = {
 				key: cacheKey,
 				expiresAt: Date.now() + SOURCE_LIST_CACHE_TTL_MS,
@@ -265,19 +303,7 @@ export function registerSourceHandlers({
 		} catch (error) {
 			console.warn("Falling back to Electron window enumeration on macOS:", error);
 
-			// Native helper failed — now (and only now) pay the cost of desktopCapturer
-			// window enumeration so the picker still shows windows.
-			const fallbackWindowSources = includeWindows
-				? await desktopCapturer
-						.getSources({
-							types: ["window"],
-							thumbnailSize: opts?.thumbnailSize,
-							fetchWindowIcons: includeWindowIcons,
-						})
-						.catch(() => [])
-				: [];
-
-			const windowSources = fallbackWindowSources
+			const windowSources = electronSources
 				.filter((source) => source.id.startsWith("window:"))
 				.filter((source) => {
 					const normalizedName = normalizeDesktopSourceName(source.name);
