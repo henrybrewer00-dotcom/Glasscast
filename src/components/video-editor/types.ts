@@ -558,11 +558,31 @@ export interface CaptionCueWord {
 
 export type AutoCaptionAnimation = "none" | "fade" | "rise" | "pop";
 
+export type CaptionTextTransform = "none" | "uppercase" | "lowercase";
+
+export const CAPTION_FONT_FAMILY_OPTIONS: Array<{ value: string; label: string }> = [
+	{ value: getDefaultCaptionFontFamily(), label: "System" },
+	{ value: '"SF Pro Rounded", ui-rounded, "Arial Rounded MT Bold", sans-serif', label: "Rounded" },
+	{ value: "Georgia, 'Times New Roman', serif", label: "Serif" },
+	{ value: "Menlo, Monaco, 'Courier New', monospace", label: "Mono" },
+	{ value: "'Arial Black', 'Helvetica Neue', sans-serif", label: "Black" },
+];
+
+export const CAPTION_FONT_WEIGHT_OPTIONS: Array<{ value: number; label: string }> = [
+	{ value: 400, label: "Regular" },
+	{ value: 500, label: "Medium" },
+	{ value: 600, label: "Semibold" },
+	{ value: 700, label: "Bold" },
+	{ value: 800, label: "Heavy" },
+];
+
 export interface AutoCaptionSettings {
 	enabled: boolean;
 	language: string;
 	fontFamily: string;
 	fontSize: number;
+	fontWeight: number;
+	textTransform: CaptionTextTransform;
 	bottomOffset: number;
 	maxWidth: number;
 	maxRows: number;
@@ -570,6 +590,7 @@ export interface AutoCaptionSettings {
 	boxRadius: number;
 	textColor: string;
 	inactiveTextColor: string;
+	backgroundColor: string;
 	backgroundOpacity: number;
 }
 
@@ -578,6 +599,8 @@ export const DEFAULT_AUTO_CAPTION_SETTINGS: AutoCaptionSettings = {
 	language: "auto",
 	fontFamily: getDefaultCaptionFontFamily(),
 	fontSize: 30,
+	fontWeight: 400,
+	textTransform: "none",
 	bottomOffset: 3,
 	maxWidth: 62,
 	maxRows: 1,
@@ -585,6 +608,7 @@ export const DEFAULT_AUTO_CAPTION_SETTINGS: AutoCaptionSettings = {
 	boxRadius: 17.5,
 	textColor: "#FFFFFF",
 	inactiveTextColor: "#A3A3A3",
+	backgroundColor: "#000000",
 	backgroundOpacity: 0.9,
 };
 

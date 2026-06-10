@@ -115,6 +115,7 @@ export type NativeMacWindowSource = {
 	windowTitle?: string;
 	bundleId?: string;
 	appIcon?: string | null;
+	thumbnail?: string | null;
 	x?: number;
 	y?: number;
 	width?: number;

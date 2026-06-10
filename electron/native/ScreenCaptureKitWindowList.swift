@@ -11,10 +11,44 @@ struct WindowListEntry: Codable {
 	let windowTitle: String?
 	let bundleId: String?
 	let appIcon: String?
+	var thumbnail: String?
 	let x: Double
 	let y: Double
 	let width: Double
 	let height: Double
+}
+
+// Pass --thumbnails to also capture a live JPEG preview per window via
+// SCScreenshotManager. Kept behind a flag because captures cost ~30-80ms each
+// and the bare metadata listing is polled on a hot path during recording.
+let includeThumbnails = CommandLine.arguments.contains("--thumbnails")
+
+func captureWindowThumbnail(_ window: SCWindow) async -> String? {
+	let frame = window.frame
+	guard frame.width > 0, frame.height > 0 else { return nil }
+
+	let targetWidth: CGFloat = 320
+	let scale = min(1, targetWidth / frame.width)
+	let config = SCStreamConfiguration()
+	config.width = max(1, Int(frame.width * scale))
+	config.height = max(1, Int(frame.height * scale))
+	config.showsCursor = false
+	config.capturesAudio = false
+
+	let filter = SCContentFilter(desktopIndependentWindow: window)
+	do {
+		let image = try await SCScreenshotManager.captureImage(
+			contentFilter: filter,
+			configuration: config
+		)
+		let rep = NSBitmapImageRep(cgImage: image)
+		guard let jpeg = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.6])
+		else { return nil }
+		return "data:image/jpeg;base64," + jpeg.base64EncodedString()
+	} catch {
+		// Minimized or otherwise uncapturable windows fall back to the app icon.
+		return nil
+	}
 }
 
 var appIconCache: [pid_t: String?] = [:]
@@ -178,9 +212,44 @@ Task {
 			return (lhs.windowTitle ?? lhs.name).localizedCaseInsensitiveCompare(rhs.windowTitle ?? rhs.name) == .orderedAscending
 		}
 
+		var finalEntries = entries
+		if includeThumbnails {
+			var windowsById: [String: SCWindow] = [:]
+			for window in shareableContent.windows {
+				windowsById["window:\(window.windowID):0"] = window
+			}
+
+			let thumbnails = await withTaskGroup(
+				of: (Int, String?).self,
+				returning: [Int: String].self
+			) { group in
+				var results: [Int: String] = [:]
+				var inFlight = 0
+				for (index, entry) in finalEntries.enumerated() {
+					guard let window = windowsById[entry.id] else { continue }
+					if inFlight >= 16, let (doneIndex, thumbnail) = await group.next() {
+						inFlight -= 1
+						if let thumbnail { results[doneIndex] = thumbnail }
+					}
+					inFlight += 1
+					group.addTask {
+						(index, await captureWindowThumbnail(window))
+					}
+				}
+				for await (doneIndex, thumbnail) in group {
+					if let thumbnail { results[doneIndex] = thumbnail }
+				}
+				return results
+			}
+
+			for (index, thumbnail) in thumbnails {
+				finalEntries[index].thumbnail = thumbnail
+			}
+		}
+
 		let encoder = JSONEncoder()
 		encoder.outputFormatting = [.sortedKeys]
-		let data = try encoder.encode(entries)
+		let data = try encoder.encode(finalEntries)
 		FileHandle.standardOutput.write(data)
 	} catch {
 		fputs("Error listing windows: \(error.localizedDescription)\n", stderr)

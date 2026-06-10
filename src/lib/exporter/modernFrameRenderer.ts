@@ -3,13 +3,14 @@ import { MotionBlurFilter } from "pixi-filters/motion-blur";
 import { ZoomBlurFilter } from "pixi-filters/zoom-blur";
 import { buildActiveCaptionLayout } from "@/components/video-editor/captionLayout";
 import {
-	CAPTION_FONT_WEIGHT,
 	CAPTION_LINE_HEIGHT,
 	getCaptionPadding,
 	getCaptionScaledFontSize,
 	getCaptionScaledRadius,
 	getCaptionTextMaxWidth,
 	getCaptionWordVisualState,
+	getCaptionBackgroundColor,
+	transformCaptionCuesForDisplay,
 } from "@/components/video-editor/captionStyle";
 import type {
 	AnnotationRegion,
@@ -1679,10 +1680,10 @@ export class FrameRenderer {
 			this.config.width,
 			settings.maxWidth,
 		);
-		measureCtx.font = `${CAPTION_FONT_WEIGHT} ${fontSize}px ${fontFamily}`;
+		measureCtx.font = `${settings.fontWeight} ${fontSize}px ${fontFamily}`;
 
 		const layout = buildActiveCaptionLayout({
-			cues,
+			cues: transformCaptionCuesForDisplay(cues, settings.textTransform),
 			timeMs,
 			settings,
 			maxWidthPx: getCaptionTextMaxWidth(this.config.width, settings.maxWidth, fontSize),
@@ -1772,8 +1773,11 @@ export class FrameRenderer {
 		}
 
 		ctx.clearRect(0, 0, this.captionCanvas.width, this.captionCanvas.height);
-		ctx.font = `${CAPTION_FONT_WEIGHT} ${state.fontSize}px ${state.fontFamily}`;
-		ctx.fillStyle = `rgba(0, 0, 0, ${settings.backgroundOpacity})`;
+		ctx.font = `${settings.fontWeight} ${state.fontSize}px ${state.fontFamily}`;
+		ctx.fillStyle = getCaptionBackgroundColor(
+			settings.backgroundColor,
+			settings.backgroundOpacity,
+		);
 		drawSquircleOnCanvas(ctx, {
 			x: 0,
 			y: 0,

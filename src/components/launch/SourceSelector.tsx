@@ -322,17 +322,25 @@ export const SourceSelector = React.memo(function SourceSelector({
 	const loading = propsLoading ?? internalLoading;
 	const selectedSource = propsSelectedSource ?? internalSelectedSource;
 
-	// Default fetching logic
+	// Default fetching logic — fast metadata list first, live previews swap in.
 	const defaultFetchSources = useCallback(async () => {
 		if (!window.electronAPI) return;
 		setInternalLoading(true);
 		try {
-			const rawSources = await window.electronAPI.getSources({
+			const fastSources = await window.electronAPI.getSources({
 				types: ["screen", "window"],
 				thumbnailSize: { width: 320, height: 180 },
 				fetchWindowIcons: true,
 			});
-			setInternalSources(rawSources.map((s) => mapRawSource(s as DesktopSource)));
+			setInternalSources(fastSources.map((s) => mapRawSource(s as DesktopSource)));
+
+			const withPreviews = await window.electronAPI.getSources({
+				types: ["screen", "window"],
+				thumbnailSize: { width: 320, height: 180 },
+				fetchWindowIcons: true,
+				includeWindowThumbnails: true,
+			});
+			setInternalSources(withPreviews.map((s) => mapRawSource(s as DesktopSource)));
 		} catch (error) {
 			console.error("Failed to fetch sources:", error);
 		} finally {

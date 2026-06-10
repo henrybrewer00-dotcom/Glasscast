@@ -1,12 +1,13 @@
 import { buildActiveCaptionLayout } from "@/components/video-editor/captionLayout";
 import {
-	CAPTION_FONT_WEIGHT,
 	CAPTION_LINE_HEIGHT,
+	getCaptionBackgroundColor,
 	getCaptionPadding,
 	getCaptionScaledFontSize,
 	getCaptionScaledRadius,
 	getCaptionTextMaxWidth,
 	getCaptionWordVisualState,
+	transformCaptionCuesForDisplay,
 } from "@/components/video-editor/captionStyle";
 import {
 	type AutoCaptionSettings,
@@ -30,11 +31,11 @@ export function renderCaptions(
 	ctx.save();
 
 	const fontSize = getCaptionScaledFontSize(settings.fontSize, width, settings.maxWidth);
-	ctx.font = `${CAPTION_FONT_WEIGHT} ${fontSize}px ${getDefaultCaptionFontFamily()}`;
+	ctx.font = `${settings.fontWeight} ${fontSize}px ${settings.fontFamily || getDefaultCaptionFontFamily()}`;
 	const padding = getCaptionPadding(fontSize);
 
 	const activeCaptionLayout = buildActiveCaptionLayout({
-		cues,
+		cues: transformCaptionCuesForDisplay(cues, settings.textTransform),
 		timeMs,
 		settings,
 		maxWidthPx: getCaptionTextMaxWidth(width, settings.maxWidth, fontSize),
@@ -65,7 +66,10 @@ export function renderCaptions(
 	ctx.scale(activeCaptionLayout.scale, activeCaptionLayout.scale);
 	ctx.globalAlpha = activeCaptionLayout.opacity;
 
-	ctx.fillStyle = `rgba(0, 0, 0, ${settings.backgroundOpacity})`;
+	ctx.fillStyle = getCaptionBackgroundColor(
+		settings.backgroundColor,
+		settings.backgroundOpacity,
+	);
 	drawSquircleOnCanvas(ctx, {
 		x: -boxWidth / 2,
 		y: -boxHeight / 2,

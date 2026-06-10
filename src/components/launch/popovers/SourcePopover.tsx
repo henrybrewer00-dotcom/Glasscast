@@ -30,12 +30,22 @@ export function SourcePopover({
 		if (!window.electronAPI) return;
 		setLoading(true);
 		try {
-			const rawSources = await window.electronAPI.getSources({
+			// Two-phase load: the metadata + app-icon list returns near-instantly;
+			// live window previews take ~1.5s to capture, so they swap in after.
+			const fastSources = await window.electronAPI.getSources({
 				types: ["screen", "window"],
 				thumbnailSize: { width: 320, height: 180 },
 				fetchWindowIcons: true,
 			});
-			setSources(rawSources.map((s) => mapRawSource(s as DesktopSource)));
+			setSources(fastSources.map((s) => mapRawSource(s as DesktopSource)));
+
+			const withPreviews = await window.electronAPI.getSources({
+				types: ["screen", "window"],
+				thumbnailSize: { width: 320, height: 180 },
+				fetchWindowIcons: true,
+				includeWindowThumbnails: true,
+			});
+			setSources(withPreviews.map((s) => mapRawSource(s as DesktopSource)));
 		} catch (error) {
 			console.error("Failed to fetch sources:", error);
 		} finally {

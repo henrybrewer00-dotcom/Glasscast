@@ -24,13 +24,14 @@ import {
 } from "@/lib/wallpapers";
 import { buildActiveCaptionLayout } from "./captionLayout";
 import {
-	CAPTION_FONT_WEIGHT,
 	CAPTION_LINE_HEIGHT,
+	getCaptionBackgroundColor,
 	getCaptionPadding,
 	getCaptionScaledFontSize,
 	getCaptionScaledRadius,
 	getCaptionTextMaxWidth,
 	getCaptionWordVisualState,
+	transformCaptionCuesForDisplay,
 } from "./captionStyle";
 import {
 	type AnnotationRegion,
@@ -719,10 +720,13 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				return null;
 			}
 
-			measurementContext.font = `${CAPTION_FONT_WEIGHT} ${fontSize}px ${getDefaultCaptionFontFamily()}`;
+			measurementContext.font = `${autoCaptionSettings.fontWeight} ${fontSize}px ${autoCaptionSettings.fontFamily || getDefaultCaptionFontFamily()}`;
 
 			return buildActiveCaptionLayout({
-				cues: autoCaptions,
+				cues: transformCaptionCuesForDisplay(
+					autoCaptions,
+					autoCaptionSettings.textTransform,
+				),
 				timeMs: Math.round(currentTime * 1000),
 				settings: autoCaptionSettings,
 				maxWidthPx: maxTextWidthPx,
@@ -2980,8 +2984,13 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 									<div
 										ref={captionBoxRef}
 										style={{
-											backgroundColor: `rgba(0, 0, 0, ${autoCaptionSettings.backgroundOpacity})`,
-											fontFamily: getDefaultCaptionFontFamily(),
+											backgroundColor: getCaptionBackgroundColor(
+												autoCaptionSettings.backgroundColor,
+												autoCaptionSettings.backgroundOpacity,
+											),
+											fontFamily:
+												autoCaptionSettings.fontFamily ||
+												getDefaultCaptionFontFamily(),
 											fontSize: `${getCaptionScaledFontSize(
 												autoCaptionSettings.fontSize,
 												overlayRef.current?.clientWidth || 960,
@@ -2989,7 +2998,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 											)}px`,
 											lineHeight: CAPTION_LINE_HEIGHT,
 											textAlign: "center",
-											fontWeight: CAPTION_FONT_WEIGHT,
+											fontWeight: autoCaptionSettings.fontWeight,
 											padding: `${
 												getCaptionPadding(
 													getCaptionScaledFontSize(

@@ -6869,6 +6869,10 @@ export default function VideoEditor() {
 						selectedAnnotationId={selectedAnnotationId}
 						annotationRegions={annotationRegions}
 						autoCaptions={autoCaptions}
+						onAutoCaptionsChange={setAutoCaptions}
+						onCaptionCueSeek={(ms) =>
+							handleSeek(mapSourceTimeToTimelineTime(ms) / 1000, { pause: true })
+						}
 						autoCaptionSettings={autoCaptionSettings}
 						whisperExecutablePath={whisperExecutablePath}
 						whisperModelPath={whisperModelPath}

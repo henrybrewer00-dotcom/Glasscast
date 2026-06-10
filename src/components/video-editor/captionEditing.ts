@@ -103,6 +103,44 @@ function shouldPreserveCaptionWords(cue: CaptionCue) {
 	return Array.isArray(cue.words) && cue.words.length > 0;
 }
 
+/**
+ * Replace the full text of one cue, rebuilding proportional word timings so
+ * karaoke highlighting still works. Returns the original array when the cue is
+ * missing or the text normalizes to empty (delete explicitly instead).
+ */
+export function setCaptionCueText(
+	cues: CaptionCue[],
+	cueId: string,
+	text: string,
+): CaptionCue[] {
+	const normalizedText = normalizeCaptionEditText(text);
+	if (!normalizedText) {
+		return cues;
+	}
+
+	return cues.map((cue) => {
+		if (cue.id !== cueId) {
+			return cue;
+		}
+		if (normalizedText === normalizeCaptionEditText(cue.text)) {
+			return cue;
+		}
+
+		const words = buildCaptionWordsForEditedText(normalizedText, cue.startMs, cue.endMs);
+		return {
+			id: cue.id,
+			startMs: cue.startMs,
+			endMs: cue.endMs,
+			text: captionWordsToText(words),
+			...(shouldPreserveCaptionWords(cue) && words.length > 0 ? { words } : {}),
+		};
+	});
+}
+
+export function deleteCaptionCue(cues: CaptionCue[], cueId: string): CaptionCue[] {
+	return cues.filter((cue) => cue.id !== cueId);
+}
+
 export function updateCaptionCuesForEditedTarget(
 	cues: CaptionCue[],
 	target: CaptionEditTarget,

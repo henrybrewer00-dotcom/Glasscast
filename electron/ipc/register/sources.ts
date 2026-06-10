@@ -5,6 +5,7 @@ import { reassertHudOverlayMousePassthrough } from "../../windows";
 import { ALLOW_GLASSCAST_WINDOW_CAPTURE } from "../constants";
 import {
 	getNativeMacWindowSources,
+	getNativeMacWindowSourcesWithThumbnails,
 	resolveLinuxWindowBounds,
 	resolveMacWindowBounds,
 	resolveWindowsWindowBounds,
@@ -50,6 +51,7 @@ export function registerSourceHandlers({
 			types: opts?.types,
 			thumbnailSize: opts?.thumbnailSize,
 			fetchWindowIcons: opts?.fetchWindowIcons,
+			includeWindowThumbnails: opts?.includeWindowThumbnails,
 		});
 		if (
 			sourceListCache &&
@@ -189,7 +191,12 @@ export function registerSourceHandlers({
 		}
 
 		try {
-			const nativeWindowSources = await getNativeMacWindowSources();
+			// includeWindowThumbnails asks the native helper to also capture live
+			// JPEG previews (~1.5s for a full desktop). Without it the helper
+			// returns metadata + app icons near-instantly.
+			const nativeWindowSources = opts?.includeWindowThumbnails
+				? await getNativeMacWindowSourcesWithThumbnails()
+				: await getNativeMacWindowSources();
 			console.log(
 				`[get-sources] mac: screenPerm=${process.platform === "darwin" ? systemPreferences.getMediaAccessStatus("screen") : "n/a"} native=${nativeWindowSources.length} electron-windows=${electronSources.filter((s) => s.id.startsWith("window:")).length}`,
 			);
@@ -242,9 +249,11 @@ export function registerSourceHandlers({
 						name: source.name,
 						originalName: source.name,
 						display_id: source.display_id ?? electronWindowSource?.display_id ?? "",
-						thumbnail: electronWindowSource?.thumbnail
-							? electronWindowSource.thumbnail.toDataURL()
-							: null,
+						thumbnail:
+							source.thumbnail ??
+							(electronWindowSource?.thumbnail
+								? electronWindowSource.thumbnail.toDataURL()
+								: null),
 						appIcon: includeWindowIcons
 							? (source.appIcon ??
 								(electronWindowSource?.appIcon

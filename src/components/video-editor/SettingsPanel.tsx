@@ -81,7 +81,10 @@ import type {
 	ZoomStyle,
 	ZoomTransitionEasing,
 } from "./types";
+import { CaptionTranscriptEditor } from "./CaptionTranscriptEditor";
 import {
+	CAPTION_FONT_FAMILY_OPTIONS,
+	CAPTION_FONT_WEIGHT_OPTIONS,
 	DEFAULT_AUTO_CAPTION_SETTINGS,
 	DEFAULT_CROP_REGION,
 	DEFAULT_CURSOR_CLICK_BOUNCE,
@@ -905,6 +908,8 @@ interface SettingsPanelProps {
 	onAnnotationBlurColorChange?: (id: string, color: string) => void;
 	onAnnotationDelete?: (id: string) => void;
 	autoCaptions?: CaptionCue[];
+	onAutoCaptionsChange?: (cues: CaptionCue[]) => void;
+	onCaptionCueSeek?: (ms: number) => void;
 	autoCaptionSettings?: AutoCaptionSettings;
 	whisperExecutablePath?: string | null;
 	whisperModelPath?: string | null;
@@ -1364,6 +1369,8 @@ export function SettingsPanel({
 	onAnnotationBlurColorChange,
 	onAnnotationDelete,
 	autoCaptions = [],
+	onAutoCaptionsChange,
+	onCaptionCueSeek,
 	autoCaptionSettings = DEFAULT_AUTO_CAPTION_SETTINGS,
 	whisperModelPath,
 	whisperModels = [],
@@ -3086,6 +3093,93 @@ export function SettingsPanel({
 						className="h-7 w-10 rounded border border-foreground/10 bg-transparent"
 					/>
 				</label>
+				<label className="flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-2">
+					<span className="text-[10px] text-muted-foreground">
+						{tSettings("captions.backgroundColor", "Background color")}
+					</span>
+					<input
+						type="color"
+						value={autoCaptionSettings.backgroundColor}
+						onChange={(event) =>
+							updateAutoCaptionSettings({ backgroundColor: event.target.value })
+						}
+						className="h-7 w-10 rounded border border-foreground/10 bg-transparent"
+					/>
+				</label>
+				<div className="flex items-center justify-between gap-3 rounded-lg bg-foreground/[0.03] px-2.5 py-2">
+					<span className="text-[10px] text-muted-foreground">
+						{tSettings("captions.textCase", "Text case")}
+					</span>
+					<div className="flex rounded-lg border border-foreground/10 bg-foreground/5 p-0.5">
+						{(
+							[
+								{ value: "none", label: "Aa" },
+								{ value: "uppercase", label: "AA" },
+								{ value: "lowercase", label: "aa" },
+							] as const
+						).map((option) => (
+							<button
+								key={option.value}
+								type="button"
+								onClick={() =>
+									updateAutoCaptionSettings({ textTransform: option.value })
+								}
+								className={cn(
+									"rounded-md px-2.5 py-1 text-xs font-medium transition-all",
+									autoCaptionSettings.textTransform === option.value
+										? "bg-neutral-800 text-white shadow-sm dark:bg-white dark:text-black"
+										: "text-muted-foreground hover:text-foreground",
+								)}
+							>
+								{option.label}
+							</button>
+						))}
+					</div>
+				</div>
+				<div className="flex items-center justify-between gap-3 rounded-lg bg-foreground/[0.03] px-2.5 py-2">
+					<span className="text-[10px] text-muted-foreground">
+						{tSettings("captions.font", "Font")}
+					</span>
+					<Select
+						value={autoCaptionSettings.fontFamily}
+						onValueChange={(value) =>
+							updateAutoCaptionSettings({ fontFamily: value })
+						}
+					>
+						<SelectTrigger className="h-9 w-[160px] rounded-xl border-foreground/10 bg-foreground/5 text-sm text-foreground hover:bg-foreground/10">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent className="border-foreground/10 bg-editor-surface-alt text-foreground">
+							{CAPTION_FONT_FAMILY_OPTIONS.map((option) => (
+								<SelectItem key={option.label} value={option.value}>
+									<span style={{ fontFamily: option.value }}>{option.label}</span>
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				</div>
+				<div className="flex items-center justify-between gap-3 rounded-lg bg-foreground/[0.03] px-2.5 py-2">
+					<span className="text-[10px] text-muted-foreground">
+						{tSettings("captions.fontWeight", "Weight")}
+					</span>
+					<Select
+						value={String(autoCaptionSettings.fontWeight)}
+						onValueChange={(value) =>
+							updateAutoCaptionSettings({ fontWeight: Number.parseInt(value, 10) })
+						}
+					>
+						<SelectTrigger className="h-9 w-[160px] rounded-xl border-foreground/10 bg-foreground/5 text-sm text-foreground hover:bg-foreground/10">
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent className="border-foreground/10 bg-editor-surface-alt text-foreground">
+							{CAPTION_FONT_WEIGHT_OPTIONS.map((option) => (
+								<SelectItem key={option.value} value={String(option.value)}>
+									<span style={{ fontWeight: option.value }}>{option.label}</span>
+								</SelectItem>
+							))}
+						</SelectContent>
+					</Select>
+				</div>
 				<div className="mb-1 text-sm font-medium text-foreground">
 					{tSettings("captions.fontSettings", "Font Settings")}
 				</div>
@@ -3157,6 +3251,26 @@ export function SettingsPanel({
 					formatValue={(value) => `${Math.round(value * 100)}%`}
 					parseInput={(text) => parseFloat(text.replace(/%$/, "")) / 100}
 				/>
+				{captionCueCount > 0 && onAutoCaptionsChange ? (
+					<div className="mt-2 flex flex-col gap-1.5">
+						<div className="flex items-center justify-between">
+							<div className="text-sm font-medium text-foreground">
+								{tSettings("captions.transcript", "Transcript")}
+							</div>
+							<span className="text-[10px] text-muted-foreground">
+								{tSettings(
+									"captions.transcriptHint",
+									"Click a time to jump · Enter to save",
+								)}
+							</span>
+						</div>
+						<CaptionTranscriptEditor
+							cues={autoCaptions}
+							onChange={onAutoCaptionsChange}
+							onSeek={onCaptionCueSeek}
+						/>
+					</div>
+				) : null}
 				{renderExtensionPanelsForSections("captions")}
 			</div>
 		</section>
@@ -4581,7 +4695,7 @@ export function SettingsPanel({
 						<div
 							role="tablist"
 							aria-label={tSettings("sections.title", "Inspector")}
-							className="flex flex-wrap items-stretch gap-x-1 gap-y-0.5 px-2 pt-2"
+							className="grid grid-cols-[repeat(auto-fit,minmax(68px,1fr))] items-stretch gap-x-0.5 gap-y-0.5 px-2 pt-2"
 						>
 							{inspectorTabs.map((tab) => {
 								const isActive = activeEffectSection === tab.id;
@@ -4594,7 +4708,7 @@ export function SettingsPanel({
 										title={tab.label}
 										onClick={() => onTabChange?.(tab.id)}
 										className={cn(
-											"group relative flex flex-shrink-0 flex-col items-center gap-1 px-2.5 pb-2 pt-1 outline-none transition-colors duration-150 focus:outline-none focus-visible:outline-none",
+											"group relative flex min-w-0 flex-col items-center gap-1 px-1.5 pb-2 pt-1 outline-none transition-colors duration-150 focus:outline-none focus-visible:outline-none",
 											isActive
 												? "text-foreground"
 												: "text-muted-foreground hover:text-foreground",

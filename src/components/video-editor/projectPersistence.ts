@@ -772,10 +772,22 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 			rawAutoCaptionSettings.language.trim()
 				? rawAutoCaptionSettings.language.trim()
 				: DEFAULT_AUTO_CAPTION_SETTINGS.language,
-		fontFamily: getDefaultCaptionFontFamily(),
+		fontFamily:
+			typeof rawAutoCaptionSettings.fontFamily === "string" &&
+			rawAutoCaptionSettings.fontFamily.trim()
+				? rawAutoCaptionSettings.fontFamily
+				: getDefaultCaptionFontFamily(),
 		fontSize: isFiniteNumber(rawAutoCaptionSettings.fontSize)
 			? clamp(rawAutoCaptionSettings.fontSize, 16, 72)
 			: DEFAULT_AUTO_CAPTION_SETTINGS.fontSize,
+		fontWeight: isFiniteNumber(rawAutoCaptionSettings.fontWeight)
+			? clamp(Math.round(rawAutoCaptionSettings.fontWeight / 100) * 100, 300, 900)
+			: DEFAULT_AUTO_CAPTION_SETTINGS.fontWeight,
+		textTransform:
+			rawAutoCaptionSettings.textTransform === "uppercase" ||
+			rawAutoCaptionSettings.textTransform === "lowercase"
+				? rawAutoCaptionSettings.textTransform
+				: DEFAULT_AUTO_CAPTION_SETTINGS.textTransform,
 		bottomOffset: isFiniteNumber(rawAutoCaptionSettings.bottomOffset)
 			? clamp(rawAutoCaptionSettings.bottomOffset, 0, 30)
 			: DEFAULT_AUTO_CAPTION_SETTINGS.bottomOffset,
@@ -802,6 +814,11 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 			rawAutoCaptionSettings.inactiveTextColor.trim()
 				? rawAutoCaptionSettings.inactiveTextColor
 				: DEFAULT_AUTO_CAPTION_SETTINGS.inactiveTextColor,
+		backgroundColor:
+			typeof rawAutoCaptionSettings.backgroundColor === "string" &&
+			rawAutoCaptionSettings.backgroundColor.trim()
+				? rawAutoCaptionSettings.backgroundColor
+				: DEFAULT_AUTO_CAPTION_SETTINGS.backgroundColor,
 		backgroundOpacity: isFiniteNumber(rawAutoCaptionSettings.backgroundOpacity)
 			? clamp(rawAutoCaptionSettings.backgroundOpacity, 0, 1)
 			: DEFAULT_AUTO_CAPTION_SETTINGS.backgroundOpacity,

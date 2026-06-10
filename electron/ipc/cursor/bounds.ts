@@ -58,6 +58,55 @@ export async function getNativeMacWindowSources(options?: { maxAgeMs?: number })
 	}
 }
 
+let cachedThumbnailSources: NativeMacWindowSource[] | null = null;
+let cachedThumbnailSourcesAtMs = 0;
+
+/**
+ * Window list including live JPEG preview thumbnails (helper `--thumbnails`
+ * mode). Slower (~1.5s for a full desktop) than the metadata-only listing, so
+ * it is a separate call with its own cache and is never used on the
+ * bounds-polling hot path.
+ */
+export async function getNativeMacWindowSourcesWithThumbnails(options?: { maxAgeMs?: number }) {
+	if (process.platform !== "darwin") {
+		return [] as NativeMacWindowSource[];
+	}
+
+	const maxAgeMs = options?.maxAgeMs ?? 2500;
+	const now = Date.now();
+	if (cachedThumbnailSources && now - cachedThumbnailSourcesAtMs < maxAgeMs) {
+		return cachedThumbnailSources;
+	}
+
+	try {
+		const binaryPath = await ensureNativeWindowListBinary();
+		const { stdout } = await execFileAsync(binaryPath, ["--thumbnails"], {
+			timeout: 30000,
+			maxBuffer: 64 * 1024 * 1024,
+		});
+
+		const parsed = JSON.parse(stdout);
+		if (!Array.isArray(parsed)) {
+			return [] as NativeMacWindowSource[];
+		}
+
+		const entries = parsed.filter((entry: unknown): entry is NativeMacWindowSource => {
+			if (!entry || typeof entry !== "object") {
+				return false;
+			}
+
+			const candidate = entry as Partial<NativeMacWindowSource>;
+			return typeof candidate.id === "string" && typeof candidate.name === "string";
+		});
+
+		cachedThumbnailSources = entries;
+		cachedThumbnailSourcesAtMs = now;
+		return entries;
+	} catch {
+		return cachedThumbnailSources ?? ([] as NativeMacWindowSource[]);
+	}
+}
+
 export function getWindowBoundsFromNativeSource(
 	source?: NativeMacWindowSource | null,
 ): WindowBounds | null {
