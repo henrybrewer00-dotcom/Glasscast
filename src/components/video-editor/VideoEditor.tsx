@@ -137,6 +137,7 @@ import { resolveAutoCaptionSourcePath } from "./autoCaptionSource";
 import { CropControl } from "./CropControl";
 import { ExportSettingsMenu } from "./ExportSettingsMenu";
 import { AccountPanel } from "@/components/cloud/AccountPanel";
+import { AgentKeyPanel } from "./AgentKeyPanel";
 import ExtensionManager from "./ExtensionManager";
 import {
 	createEditorHistoryStack,
@@ -598,6 +599,9 @@ export default function VideoEditor() {
 	// sheet so the stage and timeline get the full window width.
 	const [isInspectorOverlay, setIsInspectorOverlay] = useState(false);
 	const [inspectorOverlayOpen, setInspectorOverlayOpen] = useState(false);
+	// Optional cloud-sync disclosure under the BYOK AI keys (collapsed by default
+	// so the API-key entry — which needs no account — stays the primary action).
+	const [showCloudSync, setShowCloudSync] = useState(false);
 	useEffect(() => {
 		if (typeof window === "undefined" || !window.matchMedia) return;
 		const query = window.matchMedia("(max-width: 980px)");
@@ -6603,8 +6607,41 @@ export default function VideoEditor() {
 								})}
 							</div>
 						</div>
-						<div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar">
-							<AccountPanel />
+						<div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar p-4">
+							{/* BYOK key entry is primary and needs no account. */}
+							<AgentSettingsProvider>
+								<AgentKeyPanel />
+							</AgentSettingsProvider>
+
+							{/* Cloud sync is strictly optional, demoted below the keys. */}
+							<div className="mt-4 border-t border-foreground/10 pt-3">
+								<button
+									type="button"
+									onClick={() => setShowCloudSync((prev) => !prev)}
+									className="flex w-full items-center justify-between gap-2 text-left"
+								>
+									<span className="flex flex-col">
+										<span className="text-sm font-medium text-foreground">
+											Sync across devices
+										</span>
+										<span className="text-[11px] text-muted-foreground">
+											Optional — back up keys, presets & settings to Glasscast
+											Cloud
+										</span>
+									</span>
+									<ChevronDown
+										className={cn(
+											"h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform",
+											showCloudSync ? "rotate-180" : "",
+										)}
+									/>
+								</button>
+								{showCloudSync ? (
+									<div className="mt-3">
+										<AccountPanel embedded />
+									</div>
+								) : null}
+							</div>
 						</div>
 					</div>
 				) : activeEffectSection === "extensions" ? (

@@ -21,7 +21,7 @@ function formatLastSynced(lastSyncAt: number | null): string {
 	return new Date(lastSyncAt).toLocaleString();
 }
 
-export function AccountPanel() {
+export function AccountPanel({ embedded = false }: { embedded?: boolean } = {}) {
 	const { status, ready, signIn, signUp, signOut, syncNow } = useCloud();
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
@@ -71,6 +71,33 @@ export function AccountPanel() {
 		}
 	};
 
+	const body = !ready ? (
+		<div className="flex items-center gap-2 pt-6 text-sm text-muted-foreground">
+			<ArrowsClockwise className="h-4 w-4 animate-spin" />
+			Loading account…
+		</div>
+	) : status.signedIn ? (
+		<SignedIn status={status} busy={busy} onSyncNow={handleSyncNow} onSignOut={handleSignOut} />
+	) : (
+		<SignedOut
+			email={email}
+			password={password}
+			busy={busy}
+			error={error}
+			onEmailChange={setEmail}
+			onPasswordChange={setPassword}
+			onSignIn={() => handleAuth("in")}
+			onCreateAccount={() => handleAuth("up")}
+		/>
+	);
+
+	// Embedded mode: render just the body for stacking under another panel
+	// (e.g. as the optional "cloud sync" section beneath the BYOK keys), with
+	// no full-height layout, no panel background, and no duplicate header.
+	if (embedded) {
+		return <div className="text-foreground">{body}</div>;
+	}
+
 	return (
 		<div className="flex h-full flex-col bg-[hsl(var(--editor-panel))] text-foreground">
 			{/* Header */}
@@ -92,32 +119,7 @@ export function AccountPanel() {
 				</div>
 			</div>
 
-			<div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 pb-4">
-				{!ready ? (
-					<div className="flex items-center gap-2 pt-6 text-sm text-muted-foreground">
-						<ArrowsClockwise className="h-4 w-4 animate-spin" />
-						Loading account…
-					</div>
-				) : status.signedIn ? (
-					<SignedIn
-						status={status}
-						busy={busy}
-						onSyncNow={handleSyncNow}
-						onSignOut={handleSignOut}
-					/>
-				) : (
-					<SignedOut
-						email={email}
-						password={password}
-						busy={busy}
-						error={error}
-						onEmailChange={setEmail}
-						onPasswordChange={setPassword}
-						onSignIn={() => handleAuth("in")}
-						onCreateAccount={() => handleAuth("up")}
-					/>
-				)}
-			</div>
+			<div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 pb-4">{body}</div>
 		</div>
 	);
 }
