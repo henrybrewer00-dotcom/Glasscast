@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { CountdownOverlay } from "./components/countdown/CountdownOverlay";
 import { LaunchWindow } from "./components/launch/LaunchWindow";
 import { SourceSelector } from "./components/launch/SourceSelector";
+import { TeleprompterWindow } from "./components/teleprompter/TeleprompterWindow";
 import { UpdateToastWindow } from "./components/launch/UpdateToastWindow";
 import { Toaster } from "./components/ui/sonner";
 import { ShortcutsConfigDialog } from "./components/video-editor/ShortcutsConfigDialog";
@@ -24,6 +25,7 @@ export default function App() {
 
 		if (
 			type === "hud-overlay" ||
+			type === "teleprompter" ||
 			type === "source-selector" ||
 			type === "countdown" ||
 			(type === "update-toast" && isMacOS)
@@ -64,6 +66,8 @@ export default function App() {
 					<Toaster className="pointer-events-auto" />
 				</>
 			);
+		case "teleprompter":
+			return <TeleprompterWindow />;
 		case "source-selector":
 			return <SourceSelector />;
 		case "countdown":

@@ -289,11 +289,7 @@ function setHudOverlayFallbackExpanded(expanded: boolean) {
 
 function setHudOverlayMousePassthrough(ignore: boolean) {
 	hudOverlayIgnoringMouse =
-		hudOverlaySourceSelectionActive && !hudOverlayRecordingActive
-			? true
-			: hudOverlayRecordingActive
-				? false
-				: ignore;
+		hudOverlaySourceSelectionActive && !hudOverlayRecordingActive ? true : ignore;
 
 	if (hudOverlayMouseReassertTimer) {
 		clearTimeout(hudOverlayMouseReassertTimer);
@@ -305,9 +301,18 @@ function setHudOverlayMousePassthrough(ignore: boolean) {
 	}
 
 	if (hudOverlayRecordingActive) {
-		hudOverlayFallbackExpanded = false;
-		applyHudOverlayBounds();
-		hudOverlayWindow.setIgnoreMouseEvents(false);
+		// Respect the renderer's passthrough request while recording so the HUD
+		// only captures the mouse when the cursor is actually over the recording
+		// bar. Previously it force-captured its entire window bounds for the whole
+		// recording, turning the bottom-center region (up to 860×540 with the
+		// webcam preview shown) into a dead zone where the app being recorded
+		// couldn't be clicked, scrolled, or typed in. The webcam preview is locked
+		// (non-interactive) so it never triggers capture.
+		if (ignore) {
+			hudOverlayWindow.setIgnoreMouseEvents(true, { forward: true });
+		} else {
+			hudOverlayWindow.setIgnoreMouseEvents(false);
+		}
 		return;
 	}
 
@@ -522,13 +527,11 @@ export function createHudOverlayWindow(): BrowserWindow {
 	}
 
 	if (isHudOverlayMousePassthroughSupported()) {
-		if (hudOverlayRecordingActive) {
-			hudOverlayIgnoringMouse = false;
-			win.setIgnoreMouseEvents(false);
-		} else {
-			hudOverlayIgnoringMouse = true;
-			win.setIgnoreMouseEvents(true, { forward: true });
-		}
+		// Always initialise in passthrough (even while recording) so the app being
+		// recorded stays interactive; the renderer flips to capture only when the
+		// cursor is over the recording bar.
+		hudOverlayIgnoringMouse = true;
+		win.setIgnoreMouseEvents(true, { forward: true });
 	}
 
 	// On Windows 11+, focus changes (e.g. showing a native notification) can break
@@ -684,7 +687,9 @@ export function setHudOverlayRecordingActive(recording: boolean): void {
 	hudOverlayRecordingActive = Boolean(recording);
 	hudOverlayFallbackExpanded = false;
 	applyHudOverlayBounds();
-	setHudOverlayMousePassthrough(!hudOverlayRecordingActive);
+	// Start in passthrough so the app being recorded is immediately clickable;
+	// the renderer flips the HUD to capture only while the cursor is over the bar.
+	setHudOverlayMousePassthrough(true);
 }
 
 export function createUpdateToastWindow(): BrowserWindow {
@@ -741,6 +746,121 @@ export function createUpdateToastWindow(): BrowserWindow {
 
 	return win;
 }
+
+// ── Teleprompter overlay ──────────────────────────────────────────────────────
+// A transparent, always-click-through window that floats your script over the
+// screen while recording. It never captures the mouse (setIgnoreMouseEvents
+// stays true), so unlike the recording bar it can never block the app underneath.
+interface TeleprompterStateMain {
+	visible: boolean;
+	script: string;
+	speed: number;
+	fontSize: number;
+	opacity: number;
+	voicePaced: boolean;
+	microphoneDeviceId?: string | null;
+}
+
+let teleprompterWindow: BrowserWindow | null = null;
+let teleprompterState: TeleprompterStateMain = {
+	visible: false,
+	script: "",
+	speed: 40,
+	fontSize: 34,
+	opacity: 0.85,
+	voicePaced: true,
+	microphoneDeviceId: null,
+};
+
+function sendTeleprompterState(): void {
+	if (teleprompterWindow && !teleprompterWindow.isDestroyed()) {
+		teleprompterWindow.webContents.send("teleprompter-state", teleprompterState);
+	}
+}
+
+function createTeleprompterWindow(): BrowserWindow {
+	const { workArea } = getScreen().getPrimaryDisplay();
+	const win = new BrowserWindow({
+		x: workArea.x,
+		y: workArea.y,
+		width: workArea.width,
+		height: workArea.height,
+		frame: false,
+		transparent: true,
+		backgroundColor: "#00000000",
+		resizable: false,
+		alwaysOnTop: true,
+		skipTaskbar: true,
+		hasShadow: false,
+		show: false,
+		focusable: false,
+		webPreferences: {
+			preload: path.join(electronWindowsDir, "preload.mjs"),
+			nodeIntegration: false,
+			contextIsolation: true,
+			backgroundThrottling: false,
+		},
+	});
+
+	if (process.platform === "darwin") {
+		win.setAlwaysOnTop(true, "screen-saver");
+	}
+	win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+	// Pure passthrough for the entire lifetime — the teleprompter is read-only.
+	win.setIgnoreMouseEvents(true);
+	// Always exclude the teleprompter from the screen capture: you read it, but it
+	// must never appear in the recorded video.
+	win.setContentProtection(true);
+
+	win.on("closed", () => {
+		if (teleprompterWindow === win) {
+			teleprompterWindow = null;
+		}
+	});
+
+	if (VITE_DEV_SERVER_URL) {
+		void win.loadURL(VITE_DEV_SERVER_URL + "?windowType=teleprompter");
+	} else {
+		void win.loadFile(path.join(RENDERER_DIST, "index.html"), {
+			query: { windowType: "teleprompter" },
+		});
+	}
+
+	return win;
+}
+
+export function setTeleprompterState(next: Partial<TeleprompterStateMain>): void {
+	teleprompterState = { ...teleprompterState, ...next };
+
+	if (teleprompterState.visible && teleprompterState.script.trim()) {
+		if (!teleprompterWindow || teleprompterWindow.isDestroyed()) {
+			teleprompterWindow = createTeleprompterWindow();
+			teleprompterWindow.webContents.once("did-finish-load", () => {
+				sendTeleprompterState();
+				teleprompterWindow?.showInactive();
+			});
+		} else {
+			sendTeleprompterState();
+			teleprompterWindow.showInactive();
+		}
+		return;
+	}
+
+	sendTeleprompterState();
+	if (teleprompterWindow && !teleprompterWindow.isDestroyed()) {
+		teleprompterWindow.hide();
+	}
+}
+
+ipcMain.handle("teleprompter-set-state", (_event, next: Partial<TeleprompterStateMain>) => {
+	setTeleprompterState(next ?? {});
+	return { success: true };
+});
+
+ipcMain.handle("teleprompter-request-state", (event) => {
+	event.sender.send("teleprompter-state", teleprompterState);
+	return teleprompterState;
+});
 
 export function getUpdateToastWindow(): BrowserWindow | null {
 	return updateToastWindow && !updateToastWindow.isDestroyed() ? updateToastWindow : null;

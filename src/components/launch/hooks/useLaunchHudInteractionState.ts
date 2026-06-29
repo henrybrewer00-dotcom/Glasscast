@@ -76,7 +76,7 @@ export function useLaunchHudInteractionState({
 						if (openIdRef.current) onMouseAwayRef.current?.();
 						window.electronAPI?.hudOverlaySetIgnoreMouse?.(true);
 					}
-				}, 300);
+				}, 90);
 			}
 		};
 

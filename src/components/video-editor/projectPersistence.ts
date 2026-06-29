@@ -57,6 +57,8 @@ import {
 	DEFAULT_WEBCAM_POSITION_X,
 	DEFAULT_WEBCAM_POSITION_Y,
 	DEFAULT_WEBCAM_REACT_TO_ZOOM,
+	DEFAULT_WEBCAM_RING_COLOR,
+	DEFAULT_WEBCAM_RING_LIGHT,
 	DEFAULT_WEBCAM_SHADOW,
 	DEFAULT_WEBCAM_SIZE,
 	DEFAULT_WEBCAM_TIME_OFFSET_MS,
@@ -1072,6 +1074,14 @@ export function normalizeProjectEditor(editor: Partial<ProjectEditorState>): Pro
 			margin: isFiniteNumber(webcam.margin)
 				? clamp(webcam.margin, 0, 96)
 				: DEFAULT_WEBCAM_MARGIN,
+			ringLight: isFiniteNumber(webcam.ringLight)
+				? clamp(webcam.ringLight, 0, 1)
+				: DEFAULT_WEBCAM_RING_LIGHT,
+			ringColor:
+				typeof webcam.ringColor === "string" &&
+				/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(webcam.ringColor)
+					? webcam.ringColor
+					: DEFAULT_WEBCAM_RING_COLOR,
 		},
 		sourceAudioTrackSettingsByClip:
 			editor.sourceAudioTrackSettingsByClip &&

@@ -4,20 +4,20 @@ import { ZoomBlurFilter } from "pixi-filters/zoom-blur";
 import { buildActiveCaptionLayout } from "@/components/video-editor/captionLayout";
 import {
 	CAPTION_LINE_HEIGHT,
+	getCaptionBackgroundColor,
 	getCaptionPadding,
 	getCaptionScaledFontSize,
 	getCaptionScaledRadius,
 	getCaptionTextMaxWidth,
 	getCaptionWordVisualState,
-	getCaptionBackgroundColor,
 	transformCaptionCuesForDisplay,
 } from "@/components/video-editor/captionStyle";
 import type {
 	AnnotationRegion,
 	AutoCaptionSettings,
 	CaptionCue,
-	CursorClickEffectStyle,
 	CropRegion,
+	CursorClickEffectStyle,
 	CursorStyle,
 	CursorTelemetryPoint,
 	Padding,
@@ -28,7 +28,12 @@ import type {
 	ZoomStyle,
 	ZoomTransitionEasing,
 } from "@/components/video-editor/types";
-import { getDefaultCaptionFontFamily, ZOOM_DEPTH_SCALES } from "@/components/video-editor/types";
+import {
+	DEFAULT_WEBCAM_FULLSCREEN_RING_LIGHT,
+	DEFAULT_WEBCAM_LAYOUT_TRANSITION_MS,
+	getDefaultCaptionFontFamily,
+	ZOOM_DEPTH_SCALES,
+} from "@/components/video-editor/types";
 import { DEFAULT_FOCUS } from "@/components/video-editor/videoPlayback/constants";
 import {
 	type CursorFollowCameraState,
@@ -51,6 +56,11 @@ import {
 } from "@/components/video-editor/videoPlayback/motionSmoothing";
 import { getWebcamMediaTargetTimeSeconds } from "@/components/video-editor/videoPlayback/webcamSync";
 import { findDominantRegion } from "@/components/video-editor/videoPlayback/zoomRegionUtils";
+import {
+	getWebcamFullscreenProgressAtTime,
+	getWebcamLayoutRect,
+	getWebcamLayoutRingLight,
+} from "@/components/video-editor/webcamLayout";
 import {
 	applyZoomTransform,
 	computeFocusFromTransform,
@@ -215,12 +225,17 @@ interface WebcamRenderSource {
 interface WebcamLayoutCache {
 	sourceWidth: number;
 	sourceHeight: number;
-	size: number;
+	width: number;
+	height: number;
 	positionX: number;
 	positionY: number;
 	radius: number;
 	shadowStrength: number;
 	mirror: boolean;
+	ringLight: number;
+	ringColor: number;
+	/** 0 = bubble, 1 = fullscreen. Drives the inset "light ring" framing. */
+	fullscreenProgress: number;
 }
 
 interface AnnotationSpriteEntry {
@@ -398,6 +413,15 @@ function clampUnitInterval(value: number): number {
 	return Math.min(1, Math.max(0, value));
 }
 
+function parseHexColor(hex: string | undefined, fallback = 0xffffff): number {
+	if (typeof hex !== "string" || !/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(hex)) {
+		return fallback;
+	}
+	const value =
+		hex.length === 4 ? `${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}` : hex.slice(1);
+	return Number.parseInt(value, 16);
+}
+
 function areNearlyEqual(first: number, second: number, epsilon = 0.01): boolean {
 	return Math.abs(first - second) <= epsilon;
 }
@@ -423,6 +447,12 @@ export class FrameRenderer {
 	private backgroundTextureSource: MutableVideoTextureSource | null = null;
 	private videoMaskGraphics: Graphics | null = null;
 	private webcamMaskGraphics: Graphics | null = null;
+	private webcamRingGraphics: Graphics | null = null;
+	private webcamRingBlurFilter: BlurFilter | null = null;
+	private webcamFullscreenRingGraphics: Graphics | null = null;
+	private webcamFullscreenRingBlurFilter: BlurFilter | null = null;
+	/** Cursor-aligned playback time (ms, recording-start clock) for the layout timeline. */
+	private currentCursorTimeMs = 0;
 	private zoomBlurFilter: ZoomBlurFilter | null = null;
 	private motionBlurFilter: MotionBlurFilter | null = null;
 	private backgroundBlurFilter: BlurFilter | null = null;
@@ -601,7 +631,20 @@ export class FrameRenderer {
 			this.webcamRootContainer,
 			WEBCAM_SHADOW_LAYER_PROFILES,
 		);
+		// Ring-light glow sits beneath the masked webcam so it blooms outward from the edge.
+		this.webcamRingGraphics = new Graphics();
+		this.webcamRingBlurFilter = new BlurFilter({ strength: 8 });
+		this.webcamRingGraphics.filters = [this.webcamRingBlurFilter];
+		this.webcamRingGraphics.visible = false;
+		this.webcamRootContainer.addChild(this.webcamRingGraphics);
 		this.webcamRootContainer.addChild(this.webcamContainer);
+		// Fullscreen ring sits ABOVE the masked webcam so the "light ring around the
+		// display" glows inward from the frame edges when the webcam covers the screen.
+		this.webcamFullscreenRingGraphics = new Graphics();
+		this.webcamFullscreenRingBlurFilter = new BlurFilter({ strength: 8 });
+		this.webcamFullscreenRingGraphics.filters = [this.webcamFullscreenRingBlurFilter];
+		this.webcamFullscreenRingGraphics.visible = false;
+		this.webcamRootContainer.addChild(this.webcamFullscreenRingGraphics);
 		this.webcamRootContainer.visible = false;
 
 		this.overlayContainer.addChild(this.webcamRootContainer);
@@ -628,14 +671,14 @@ export class FrameRenderer {
 					massMultiplier: this.config.cursorSpringMassMultiplier,
 				},
 				motionBlur: this.config.cursorMotionBlur ?? 0,
-				clickEffect:
-					this.config.cursorClickEffect ?? DEFAULT_CURSOR_CONFIG.clickEffect,
+				clickEffect: this.config.cursorClickEffect ?? DEFAULT_CURSOR_CONFIG.clickEffect,
 				clickEffectColor:
 					this.config.cursorClickEffectColor ?? DEFAULT_CURSOR_CONFIG.clickEffectColor,
 				clickEffectScale:
 					this.config.cursorClickEffectScale ?? DEFAULT_CURSOR_CONFIG.clickEffectScale,
 				clickEffectOpacity:
-					this.config.cursorClickEffectOpacity ?? DEFAULT_CURSOR_CONFIG.clickEffectOpacity,
+					this.config.cursorClickEffectOpacity ??
+					DEFAULT_CURSOR_CONFIG.clickEffectOpacity,
 				clickEffectDurationMs:
 					this.config.cursorClickEffectDurationMs ??
 					DEFAULT_CURSOR_CONFIG.clickEffectDurationMs,
@@ -2558,15 +2601,10 @@ export class FrameRenderer {
 			const usesDefaultCropRegion = isWebcamCropRegionDefault(this.config.webcam?.cropRegion);
 			const needsCacheBackedSource =
 				!usesDefaultCropRegion ||
-				(typeof HTMLVideoElement !== "undefined" &&
-					liveSource instanceof HTMLVideoElement);
+				(typeof HTMLVideoElement !== "undefined" && liveSource instanceof HTMLVideoElement);
 
 			if (needsCacheBackedSource) {
-				this.refreshWebcamFrameCache(
-					liveSource,
-					liveSourceWidth,
-					liveSourceHeight,
-				);
+				this.refreshWebcamFrameCache(liveSource, liveSourceWidth, liveSourceHeight);
 				const cachedSource = this.getCachedWebcamRenderSource();
 				if (cachedSource) {
 					this.setWebcamRenderMode("live");
@@ -2613,11 +2651,15 @@ export class FrameRenderer {
 			previousLayout.mirror === nextLayout.mirror &&
 			areNearlyEqual(previousLayout.sourceWidth, nextLayout.sourceWidth) &&
 			areNearlyEqual(previousLayout.sourceHeight, nextLayout.sourceHeight) &&
-			areNearlyEqual(previousLayout.size, nextLayout.size) &&
+			areNearlyEqual(previousLayout.width, nextLayout.width) &&
+			areNearlyEqual(previousLayout.height, nextLayout.height) &&
 			areNearlyEqual(previousLayout.positionX, nextLayout.positionX) &&
 			areNearlyEqual(previousLayout.positionY, nextLayout.positionY) &&
 			areNearlyEqual(previousLayout.radius, nextLayout.radius) &&
-			areNearlyEqual(previousLayout.shadowStrength, nextLayout.shadowStrength)
+			areNearlyEqual(previousLayout.shadowStrength, nextLayout.shadowStrength) &&
+			areNearlyEqual(previousLayout.ringLight, nextLayout.ringLight) &&
+			areNearlyEqual(previousLayout.fullscreenProgress, nextLayout.fullscreenProgress) &&
+			previousLayout.ringColor === nextLayout.ringColor
 		);
 	}
 
@@ -2628,14 +2670,16 @@ export class FrameRenderer {
 
 		this.webcamRootContainer.position.set(nextLayout.positionX, nextLayout.positionY);
 
+		const refDim = Math.min(nextLayout.width, nextLayout.height);
+
 		applyCoverLayoutToSprite(
 			this.webcamSprite,
 			nextLayout.sourceWidth,
 			nextLayout.sourceHeight,
-			nextLayout.size,
-			nextLayout.size,
-			nextLayout.size / 2,
-			nextLayout.size / 2,
+			nextLayout.width,
+			nextLayout.height,
+			nextLayout.width / 2,
+			nextLayout.height / 2,
 			nextLayout.mirror,
 		);
 
@@ -2643,29 +2687,95 @@ export class FrameRenderer {
 		drawSquircleOnGraphics(this.webcamMaskGraphics, {
 			x: 0,
 			y: 0,
-			width: nextLayout.size,
-			height: nextLayout.size,
+			width: nextLayout.width,
+			height: nextLayout.height,
 			radius: nextLayout.radius,
 		});
 		this.webcamMaskGraphics.fill({ color: 0xffffff });
 
 		for (const layer of this.webcamShadowLayers) {
-			if (nextLayout.shadowStrength <= 0) {
+			if (nextLayout.shadowStrength <= 0 || nextLayout.fullscreenProgress > 0.5) {
 				layer.container.visible = false;
 				continue;
 			}
 
-			const offsetY = nextLayout.size * layer.offsetScale * nextLayout.shadowStrength;
+			const offsetY = refDim * layer.offsetScale * nextLayout.shadowStrength;
 			this.rasterizeShadowLayer(layer, {
 				x: 0,
 				y: 0,
-				width: nextLayout.size,
-				height: nextLayout.size,
+				width: nextLayout.width,
+				height: nextLayout.height,
 				radius: nextLayout.radius,
 				offsetY,
 				alpha: layer.alphaScale * nextLayout.shadowStrength,
-				blur: Math.max(0, nextLayout.size * layer.blurScale * nextLayout.shadowStrength),
+				blur: Math.max(0, refDim * layer.blurScale * nextLayout.shadowStrength),
 			});
+		}
+
+		// Outer ring-light halo (bubble framing); fades out as we go fullscreen since a
+		// full-frame halo would fall outside the frame.
+		const outerRing = nextLayout.ringLight * (1 - nextLayout.fullscreenProgress);
+		if (this.webcamRingGraphics) {
+			if (outerRing > 0.001) {
+				const grow = refDim * (0.03 + 0.06 * outerRing);
+				this.webcamRingGraphics.clear();
+				drawSquircleOnGraphics(this.webcamRingGraphics, {
+					x: -grow,
+					y: -grow,
+					width: nextLayout.width + grow * 2,
+					height: nextLayout.height + grow * 2,
+					radius: nextLayout.radius + grow,
+				});
+				this.webcamRingGraphics.fill({ color: nextLayout.ringColor });
+				this.webcamRingGraphics.alpha = Math.min(1, 0.4 + 0.6 * outerRing);
+				this.webcamRingGraphics.visible = true;
+				if (this.webcamRingBlurFilter) {
+					this.webcamRingBlurFilter.strength = Math.max(
+						2,
+						refDim * (0.06 + 0.12 * outerRing),
+					);
+				}
+			} else {
+				this.webcamRingGraphics.visible = false;
+			}
+		}
+
+		// Inset fullscreen ring-light: a glowing stroked border just inside the frame
+		// edges, fading in with the morph (the "light ring around the display").
+		if (this.webcamFullscreenRingGraphics) {
+			const innerRing = getWebcamLayoutRingLight({
+				baseRingLight: nextLayout.ringLight,
+				fullscreenRingLight: DEFAULT_WEBCAM_FULLSCREEN_RING_LIGHT,
+				fullscreenProgress: nextLayout.fullscreenProgress,
+			});
+			const ringAlpha = nextLayout.fullscreenProgress * Math.min(1, innerRing);
+			if (ringAlpha > 0.001) {
+				const strokeWidth = Math.max(2, refDim * (0.012 + 0.03 * innerRing));
+				const inset = strokeWidth / 2;
+				this.webcamFullscreenRingGraphics.clear();
+				drawSquircleOnGraphics(this.webcamFullscreenRingGraphics, {
+					x: inset,
+					y: inset,
+					width: Math.max(1, nextLayout.width - inset * 2),
+					height: Math.max(1, nextLayout.height - inset * 2),
+					radius: nextLayout.radius,
+				});
+				this.webcamFullscreenRingGraphics.stroke({
+					width: strokeWidth,
+					color: nextLayout.ringColor,
+					alpha: Math.min(1, 0.6 * innerRing + 0.3),
+				});
+				this.webcamFullscreenRingGraphics.alpha = ringAlpha;
+				this.webcamFullscreenRingGraphics.visible = true;
+				if (this.webcamFullscreenRingBlurFilter) {
+					this.webcamFullscreenRingBlurFilter.strength = Math.max(
+						2,
+						refDim * (0.02 + 0.05 * innerRing),
+					);
+				}
+			} else {
+				this.webcamFullscreenRingGraphics.visible = false;
+			}
 		}
 
 		this.webcamLayoutCache = { ...nextLayout };
@@ -2913,7 +3023,7 @@ export class FrameRenderer {
 		}
 
 		const margin = webcam.margin ?? 24;
-		const size = getWebcamOverlaySizePx({
+		const bubbleSize = getWebcamOverlaySizePx({
 			containerWidth: this.config.width,
 			containerHeight: this.config.height,
 			sizePercent: webcam.size ?? 50,
@@ -2921,30 +3031,54 @@ export class FrameRenderer {
 			zoomScale: this.animationState.appliedScale || 1,
 			reactToZoom: webcam.reactToZoom ?? true,
 		});
-		const position = getWebcamOverlayPosition({
+		const bubblePosition = getWebcamOverlayPosition({
 			containerWidth: this.config.width,
 			containerHeight: this.config.height,
-			size,
+			size: bubbleSize,
 			margin,
 			positionPreset: webcam.positionPreset ?? webcam.corner,
 			positionX: webcam.positionX ?? 1,
 			positionY: webcam.positionY ?? 1,
 			legacyCorner: webcam.corner,
 		});
-		const radius = Math.max(0, webcam.cornerRadius ?? 18);
+
+		// Resolve fullscreen/bubble framing from the live-recorded layout timeline,
+		// looked up at the cursor-aligned time so it matches the recorded switches
+		// (and the editor preview) exactly.
+		const fullscreenProgress = getWebcamFullscreenProgressAtTime(
+			webcam.layout,
+			this.currentCursorTimeMs,
+			DEFAULT_WEBCAM_LAYOUT_TRANSITION_MS,
+		);
+		const rect = getWebcamLayoutRect({
+			bubbleX: bubblePosition.x,
+			bubbleY: bubblePosition.y,
+			bubbleSize,
+			bubbleRadiusPercent: Math.max(0, webcam.cornerRadius ?? 18),
+			frameWidth: this.config.width,
+			frameHeight: this.config.height,
+			fullscreenProgress,
+		});
+
 		const shadowStrength = clampUnitInterval(webcam.shadow ?? 0);
+		const ringLight = clampUnitInterval(webcam.ringLight ?? 0);
+		const ringColor = parseHexColor(webcam.ringColor);
 
 		this.webcamRootContainer.visible = true;
 
 		const nextLayout: WebcamLayoutCache = {
 			sourceWidth: renderableWebcamSource.width,
 			sourceHeight: renderableWebcamSource.height,
-			size,
-			positionX: position.x,
-			positionY: position.y,
-			radius,
+			width: rect.width,
+			height: rect.height,
+			positionX: rect.x,
+			positionY: rect.y,
+			radius: rect.radiusPercent,
 			shadowStrength,
 			mirror: webcam.mirror,
+			ringLight,
+			ringColor,
+			fullscreenProgress,
 		};
 
 		if (!this.hasMatchingWebcamLayout(nextLayout)) {
@@ -2966,6 +3100,7 @@ export class FrameRenderer {
 		}
 
 		this.currentVideoTime = timestamp / 1_000_000;
+		this.currentCursorTimeMs = cursorTimestamp / 1000;
 		const webcamRenderTimeSeconds = Math.max(
 			0,
 			webcamTimeSecondsOverride ?? this.currentVideoTime,
@@ -3160,6 +3295,7 @@ export class FrameRenderer {
 		}
 
 		this.currentVideoTime = timestamp / 1_000_000;
+		this.currentCursorTimeMs = cursorTimestamp / 1000;
 
 		const resolvedVideoSource = await this.resolveDetachedVideoFrameSource(
 			videoFrame,
@@ -3967,6 +4103,10 @@ export class FrameRenderer {
 		this.captionContainer = null;
 		this.webcamRootContainer = null;
 		this.webcamContainer = null;
+		this.webcamRingGraphics = null;
+		this.webcamRingBlurFilter = null;
+		this.webcamFullscreenRingGraphics = null;
+		this.webcamFullscreenRingBlurFilter = null;
 		this.videoSprite = null;
 		this.videoTextureSource = null;
 		this.backgroundSprite = null;

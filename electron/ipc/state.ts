@@ -81,6 +81,13 @@ export let cursorCapturePauseStartedAtMs: number | null = null;
 export let activeCursorSamples: CursorTelemetryPoint[] = [];
 export let pendingCursorSamples: CursorTelemetryPoint[] = [];
 export let isCursorCaptureActive = false;
+
+// ── Webcam layout timeline (fullscreen/bubble switches, recording-start clock) ──
+export type WebcamLayoutCaptureEvent = { timeMs: number; mode: "fullscreen" | "bubble" };
+export let webcamLayoutEvents: WebcamLayoutCaptureEvent[] = [];
+export function setWebcamLayoutEvents(v: WebcamLayoutCaptureEvent[]) {
+	webcamLayoutEvents = v;
+}
 export let interactionCaptureCleanup: (() => void) | null = null;
 export let hasLoggedInteractionHookFailure = false;
 export let lastLeftClick: { timeMs: number; cx: number; cy: number } | null = null;

@@ -53,6 +53,7 @@ import { SUPPORTED_LOCALES } from "../../i18n/config";
 import { AgentKeyPanel } from "./AgentKeyPanel";
 import { AgentPanel, type AgentPanelProps } from "./AgentPanel";
 import { AnnotationSettingsPanel } from "./AnnotationSettingsPanel";
+import { CaptionTranscriptEditor } from "./CaptionTranscriptEditor";
 import {
 	CURSOR_MOTION_PRESETS,
 	type CursorMotionPresetId,
@@ -81,7 +82,6 @@ import type {
 	ZoomStyle,
 	ZoomTransitionEasing,
 } from "./types";
-import { CaptionTranscriptEditor } from "./CaptionTranscriptEditor";
 import {
 	CAPTION_FONT_FAMILY_OPTIONS,
 	CAPTION_FONT_WEIGHT_OPTIONS,
@@ -105,6 +105,8 @@ import {
 	DEFAULT_WEBCAM_POSITION_X,
 	DEFAULT_WEBCAM_POSITION_Y,
 	DEFAULT_WEBCAM_REACT_TO_ZOOM,
+	DEFAULT_WEBCAM_RING_COLOR,
+	DEFAULT_WEBCAM_RING_LIGHT,
 	DEFAULT_WEBCAM_SHADOW,
 	DEFAULT_WEBCAM_SIZE,
 	DEFAULT_ZOOM_3D_INTENSITY,
@@ -256,9 +258,10 @@ function isHexWallpaper(value: string): boolean {
 
 function hexToRgba(hex: string, alpha: number) {
 	const normalized = isHexWallpaper(hex) ? hex : DEFAULT_CURSOR_CLICK_EFFECT_COLOR;
-	const value = normalized.length === 4
-		? `#${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}${normalized[3]}${normalized[3]}`
-		: normalized;
+	const value =
+		normalized.length === 4
+			? `#${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}${normalized[3]}${normalized[3]}`
+			: normalized;
 	const color = Number.parseInt(value.slice(1), 16);
 	const red = (color >> 16) & 255;
 	const green = (color >> 8) & 255;
@@ -606,8 +609,23 @@ function CursorClickEffectPreview({
 					viewBox="0 0 40 40"
 					aria-hidden="true"
 				>
-					<circle cx="20" cy="20" r="11.5" fill="none" stroke="currentColor" strokeWidth="1.8" opacity="0.75" />
-					<path d="M12.5 27.5 27.5 12.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2.2" opacity="0.92" />
+					<circle
+						cx="20"
+						cy="20"
+						r="11.5"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="1.8"
+						opacity="0.75"
+					/>
+					<path
+						d="M12.5 27.5 27.5 12.5"
+						fill="none"
+						stroke="currentColor"
+						strokeLinecap="round"
+						strokeWidth="2.2"
+						opacity="0.92"
+					/>
 				</svg>
 			) : null}
 			{effect === "ripple" ? (
@@ -648,13 +666,17 @@ function CursorClickEffectPreview({
 					viewBox="0 0 48 48"
 					aria-hidden="true"
 				>
-					<g
-						fill="none"
-						stroke="currentColor"
-					>
+					<g fill="none" stroke="currentColor">
 						<circle cx="24" cy="24" r="9" strokeWidth="1.8" opacity="0.72" />
 						<circle cx="24" cy="24" r="14.5" strokeWidth="1.5" opacity="0.4" />
-						<circle cx="24" cy="24" r="4.25" fill="currentColor" opacity="0.22" stroke="none" />
+						<circle
+							cx="24"
+							cy="24"
+							r="4.25"
+							fill="currentColor"
+							opacity="0.22"
+							stroke="none"
+						/>
 					</g>
 				</svg>
 			) : null}
@@ -737,7 +759,10 @@ function CursorClickEffectCards({
 						>
 							<div className="flex h-full flex-col items-center justify-between gap-3">
 								<div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-[8px] px-2 py-1.5">
-									<CursorClickEffectPreview effect={effect.id} color={effectColor} />
+									<CursorClickEffectPreview
+										effect={effect.id}
+										color={effectColor}
+									/>
 								</div>
 							</div>
 						</ToggleGroupItem>
@@ -2815,9 +2840,7 @@ export function SettingsPanel({
 							</div>
 							<Select
 								value={selectedCaptionModelId}
-								onValueChange={(value) =>
-									onSelectedCaptionModelIdChange?.(value)
-								}
+								onValueChange={(value) => onSelectedCaptionModelIdChange?.(value)}
 							>
 								<SelectTrigger className="h-10 w-[180px] rounded-xl border-foreground/10 bg-foreground/5 text-sm text-foreground hover:bg-foreground/10">
 									<SelectValue />
@@ -2852,53 +2875,55 @@ export function SettingsPanel({
 									{tSettings("captions.apiKey", "API key")}
 								</div>
 								{activeCloudKeyStatus?.hasKey ? (
-								<div className="flex items-center justify-between gap-2 rounded-xl border border-foreground/10 bg-foreground/5 px-3 py-2">
-									<span className="text-sm text-muted-foreground">
-										{tSettings("captions.apiKeySaved", "Saved")} ••••
-										{activeCloudKeyStatus.last4}
-									</span>
-									<Button
-										type="button"
-										variant="outline"
-										onClick={() => onDeleteCaptionKey?.(selectedCaptionProvider)}
-										className="h-8 rounded-lg border-foreground/10 bg-foreground/5 px-3 text-xs text-foreground hover:bg-foreground/10 hover:text-foreground"
-									>
-										{tSettings("captions.removeKey", "Remove")}
-									</Button>
-								</div>
-							) : (
-								<div className="flex items-center gap-2">
-									<input
-										type="password"
-										value={captionKeyDraft}
-										onChange={(event) =>
-											setCaptionKeyDraft(event.target.value)
-										}
-										placeholder={tSettings(
-											"captions.apiKeyPlaceholder",
-											"Paste API key",
-										)}
-										autoComplete="off"
-										spellCheck={false}
-										className="h-10 flex-1 rounded-xl border border-foreground/10 bg-foreground/5 px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:bg-foreground/10"
-									/>
-									<Button
-										type="button"
-										onClick={() => {
-											onSaveCaptionKey?.(
-												selectedCaptionProvider,
-												captionKeyDraft,
-											);
-											setCaptionKeyDraft("");
-										}}
-										disabled={!captionKeyDraft.trim()}
-										className="h-10 rounded-xl bg-[var(--brand-accent)] px-4 text-sm font-medium text-white hover:bg-[var(--brand-accent)]/90 disabled:opacity-60"
-									>
-										{tSettings("captions.saveKey", "Save")}
-									</Button>
-								</div>
-							)}
-						</div>
+									<div className="flex items-center justify-between gap-2 rounded-xl border border-foreground/10 bg-foreground/5 px-3 py-2">
+										<span className="text-sm text-muted-foreground">
+											{tSettings("captions.apiKeySaved", "Saved")} ••••
+											{activeCloudKeyStatus.last4}
+										</span>
+										<Button
+											type="button"
+											variant="outline"
+											onClick={() =>
+												onDeleteCaptionKey?.(selectedCaptionProvider)
+											}
+											className="h-8 rounded-lg border-foreground/10 bg-foreground/5 px-3 text-xs text-foreground hover:bg-foreground/10 hover:text-foreground"
+										>
+											{tSettings("captions.removeKey", "Remove")}
+										</Button>
+									</div>
+								) : (
+									<div className="flex items-center gap-2">
+										<input
+											type="password"
+											value={captionKeyDraft}
+											onChange={(event) =>
+												setCaptionKeyDraft(event.target.value)
+											}
+											placeholder={tSettings(
+												"captions.apiKeyPlaceholder",
+												"Paste API key",
+											)}
+											autoComplete="off"
+											spellCheck={false}
+											className="h-10 flex-1 rounded-xl border border-foreground/10 bg-foreground/5 px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:bg-foreground/10"
+										/>
+										<Button
+											type="button"
+											onClick={() => {
+												onSaveCaptionKey?.(
+													selectedCaptionProvider,
+													captionKeyDraft,
+												);
+												setCaptionKeyDraft("");
+											}}
+											disabled={!captionKeyDraft.trim()}
+											className="h-10 rounded-xl bg-[var(--brand-accent)] px-4 text-sm font-medium text-white hover:bg-[var(--brand-accent)]/90 disabled:opacity-60"
+										>
+											{tSettings("captions.saveKey", "Save")}
+										</Button>
+									</div>
+								)}
+							</div>
 						)}
 					</>
 				) : (
@@ -2909,9 +2934,7 @@ export function SettingsPanel({
 							</div>
 							<Select
 								value={selectedCaptionModelId}
-								onValueChange={(value) =>
-									onSelectedCaptionModelIdChange?.(value)
-								}
+								onValueChange={(value) => onSelectedCaptionModelIdChange?.(value)}
 							>
 								<SelectTrigger className="h-10 w-[180px] rounded-xl border-foreground/10 bg-foreground/5 text-sm text-foreground hover:bg-foreground/10">
 									<SelectValue />
@@ -2952,7 +2975,9 @@ export function SettingsPanel({
 									<Button
 										type="button"
 										variant="outline"
-										onClick={() => onDeleteWhisperModel?.(selectedLocalModel.id)}
+										onClick={() =>
+											onDeleteWhisperModel?.(selectedLocalModel.id)
+										}
 										className="h-8 shrink-0 rounded-lg border-foreground/10 bg-foreground/5 px-3 text-xs text-foreground hover:bg-foreground/10 hover:text-foreground"
 									>
 										{tSettings("captions.deleteModel", "Delete Model")}
@@ -2960,7 +2985,9 @@ export function SettingsPanel({
 								) : (
 									<Button
 										type="button"
-										onClick={() => onDownloadWhisperModel?.(selectedLocalModel.id)}
+										onClick={() =>
+											onDownloadWhisperModel?.(selectedLocalModel.id)
+										}
 										className="h-8 shrink-0 rounded-lg bg-[var(--brand-accent)] px-3 text-xs font-medium text-white hover:bg-[var(--brand-accent)]/90"
 									>
 										{tSettings("captions.downloadModel", "Download Model")}
@@ -3142,9 +3169,7 @@ export function SettingsPanel({
 					</span>
 					<Select
 						value={autoCaptionSettings.fontFamily}
-						onValueChange={(value) =>
-							updateAutoCaptionSettings({ fontFamily: value })
-						}
+						onValueChange={(value) => updateAutoCaptionSettings({ fontFamily: value })}
 					>
 						<SelectTrigger className="h-9 w-[160px] rounded-xl border-foreground/10 bg-foreground/5 text-sm text-foreground hover:bg-foreground/10">
 							<SelectValue />
@@ -3711,7 +3736,9 @@ export function SettingsPanel({
 					</span>
 					<select
 						value={mouseSoundPreset}
-						onChange={(e) => onMouseSoundPresetChange?.(e.target.value as MouseSoundPreset)}
+						onChange={(e) =>
+							onMouseSoundPresetChange?.(e.target.value as MouseSoundPreset)
+						}
 						className="h-7 rounded-md border border-foreground/10 bg-foreground/5 px-2 text-[11px] text-foreground outline-none hover:bg-foreground/10"
 					>
 						{MOUSE_SOUND_PRESETS.map((preset) => (
@@ -3857,9 +3884,7 @@ export function SettingsPanel({
 									step={0.05}
 									onChange={(v) => onZoomIntensityChange?.(v)}
 									formatValue={(v) => `${Math.round(v * 100)}%`}
-									parseInput={(text) =>
-										parseFloat(text.replace(/%$/, "")) / 100
-									}
+									parseInput={(text) => parseFloat(text.replace(/%$/, "")) / 100}
 								/>
 							</div>
 						)}
@@ -4286,12 +4311,15 @@ export function SettingsPanel({
 										<div className="flex flex-wrap gap-1.5">
 											{CLICK_EFFECT_COLOR_OPTIONS.map((color) => {
 												const isSelected =
-													cursorClickEffectColor.toLowerCase() === color.toLowerCase();
+													cursorClickEffectColor.toLowerCase() ===
+													color.toLowerCase();
 												return (
 													<button
 														key={color}
 														type="button"
-														onClick={() => onCursorClickEffectColorChange?.(color)}
+														onClick={() =>
+															onCursorClickEffectColorChange?.(color)
+														}
 														className={cn(
 															"h-6 w-6 rounded-[8px] border transition-transform hover:scale-[1.04]",
 															isSelected
@@ -4305,7 +4333,9 @@ export function SettingsPanel({
 											})}
 											<button
 												type="button"
-												onClick={() => cursorClickEffectColorInputRef.current?.click()}
+												onClick={() =>
+													cursorClickEffectColorInputRef.current?.click()
+												}
 												className="relative h-6 w-10 overflow-hidden rounded-[8px] border border-foreground/10 text-[8px] font-semibold uppercase tracking-[0.18em] text-foreground"
 												style={{
 													background: `linear-gradient(135deg, ${cursorClickEffectColor} 0%, ${cursorClickEffectColor} 58%, rgba(255,255,255,0.92) 58%, rgba(255,255,255,0.92) 100%)`,
@@ -4615,6 +4645,31 @@ export function SettingsPanel({
 								formatValue={(v) => `${Math.round(v * 100)}%`}
 								parseInput={(text) => parseFloat(text.replace(/%$/, "")) / 100}
 							/>
+							<SliderControl
+								label={tSettings("effects.webcamRingLight", "Ring light")}
+								value={webcam?.ringLight ?? DEFAULT_WEBCAM_RING_LIGHT}
+								defaultValue={DEFAULT_WEBCAM_RING_LIGHT}
+								min={0}
+								max={1}
+								step={0.01}
+								onChange={(v) => updateWebcam({ ringLight: v })}
+								formatValue={(v) => `${Math.round(v * 100)}%`}
+								parseInput={(text) => parseFloat(text.replace(/%$/, "")) / 100}
+							/>
+							<div className="flex items-center justify-between rounded-lg bg-foreground/[0.03] px-2.5 py-2">
+								<div className="text-[10px] text-muted-foreground">
+									{tSettings("effects.webcamRingColor", "Ring color")}
+								</div>
+								<input
+									type="color"
+									value={webcam?.ringColor ?? DEFAULT_WEBCAM_RING_COLOR}
+									onChange={(event) =>
+										updateWebcam({ ringColor: event.target.value })
+									}
+									className="h-6 w-9 cursor-pointer rounded border border-foreground/10 bg-transparent p-0"
+									aria-label={tSettings("effects.webcamRingColor", "Ring color")}
+								/>
+							</div>
 							<div className="rounded-lg bg-foreground/[0.03] px-2.5 py-2">
 								<div className="flex flex-col gap-2">
 									<div className="min-w-0">

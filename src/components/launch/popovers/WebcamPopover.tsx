@@ -1,6 +1,8 @@
 import {
 	Eye,
 	EyeSlash as EyeOff,
+	Lock,
+	LockOpen,
 	VideoCamera as Video,
 	VideoCameraSlash as VideoOff,
 } from "@phosphor-icons/react";
@@ -20,6 +22,8 @@ export function WebcamPopover({
 	canToggleFloatingPreview,
 	showFloatingWebcamPreview,
 	onToggleFloatingPreview,
+	webcamPreviewLocked,
+	onToggleWebcamPreviewLocked,
 	showWebcamControls,
 	setWebcamPreviewNode,
 	videoDevices,
@@ -34,6 +38,8 @@ export function WebcamPopover({
 	canToggleFloatingPreview: boolean;
 	showFloatingWebcamPreview: boolean;
 	onToggleFloatingPreview: () => void;
+	webcamPreviewLocked: boolean;
+	onToggleWebcamPreviewLocked: () => void;
 	showWebcamControls: boolean;
 	setWebcamPreviewNode: (node: HTMLVideoElement | null) => void;
 	videoDevices: DeviceOption[];
@@ -83,6 +89,15 @@ export function WebcamPopover({
 								: t("recording.showFloatingWebcamPreview")}
 						</DropdownItem>
 					) : null}
+					<DropdownItem
+						icon={webcamPreviewLocked ? <Lock size={16} /> : <LockOpen size={16} />}
+						selected={webcamPreviewLocked}
+						onClick={onToggleWebcamPreviewLocked}
+					>
+						{webcamPreviewLocked
+							? t("recording.unlockFloatingWebcamPreview", "Unlock preview (allow moving)")
+							: t("recording.lockFloatingWebcamPreview", "Lock preview (no click/scroll block)")}
+					</DropdownItem>
 				</>
 			)}
 			{!webcamEnabled && (

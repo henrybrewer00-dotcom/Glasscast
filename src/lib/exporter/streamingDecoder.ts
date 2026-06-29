@@ -62,6 +62,26 @@ export function getDecodedFrameTimelineOffsetUs(
 }
 
 /**
+ * Milliseconds to add to a frame's 0-based export source time to recover the
+ * recording-start (presentation) time that cursor/zoom telemetry is keyed to.
+ *
+ * Frames are emitted on a timeline where the first presented frame is t=0, but
+ * telemetry timeMs counts from when capture began. When a recording has a
+ * capture warm-up (non-zero start_time / first-frame PTS) the two differ by that
+ * warm-up; without correcting it the exported cursor leads the recorded screen.
+ */
+export function getCursorTelemetryOffsetMs(
+	firstDecodedFrameTimestampUs: number,
+	metadata: Pick<DecodedVideoInfo, "mediaStartTime" | "streamStartTime">,
+): number {
+	const timelineOffsetUs = getDecodedFrameTimelineOffsetUs(
+		firstDecodedFrameTimestampUs,
+		metadata,
+	);
+	return Math.max(0, (firstDecodedFrameTimestampUs - timelineOffsetUs) / 1000);
+}
+
+/**
  * Decodes video frames via web-demuxer + VideoDecoder in a single forward pass.
  * Way faster than seeking an HTMLVideoElement per frame.
  *
@@ -260,6 +280,16 @@ export class StreamingVideoDecoder {
 		let decodeDone = false;
 		let firstDecodedFrameTimestampUs: number | null = null;
 		let decodedFrameTimelineOffsetUs = 0;
+		// Cursor/zoom telemetry is timestamped against the recording-start clock
+		// (timeMs 0 = when capture began), but decoded video frames are normalized
+		// to a 0-based timeline starting at the first *presented* frame. When the
+		// container has a capture warm-up (non-zero start_time / first-frame PTS),
+		// those two timelines differ by exactly that warm-up. Without this offset
+		// the exported cursor runs ahead of the recorded screen (clicks land before
+		// the screen reacts). Preview avoids this because the <video> element keeps
+		// the real presentation timeline. Add the warm-up back when looking up
+		// telemetry so the overlay tracks the content it was recorded against.
+		let cursorTimelineOffsetMs = 0;
 
 		this.decoder = new VideoDecoder({
 			output: (frame: VideoFrame) => {
@@ -400,7 +430,7 @@ export class StreamingVideoDecoder {
 				heldFrame,
 				exportFrameIndex * frameDurationUs,
 				sourceTimestampMs,
-				sourceTimestampMs,
+				sourceTimestampMs + cursorTimelineOffsetMs,
 			);
 			segmentFrameIndex++;
 			exportFrameIndex++;
@@ -414,6 +444,14 @@ export class StreamingVideoDecoder {
 			if (firstDecodedFrameTimestampUs === null) {
 				firstDecodedFrameTimestampUs = frame.timestamp;
 				decodedFrameTimelineOffsetUs = getDecodedFrameTimelineOffsetUs(
+					firstDecodedFrameTimestampUs,
+					this.metadata,
+				);
+				// frameTimeSec = (pts - first + decodedFrameTimelineOffsetUs) / 1e6, so a
+				// frame shown at sourceTimeSec=t has pts = t + (first - timelineOffset).
+				// Telemetry shares the recording-start (pts) origin, so look it up at that
+				// real time: cursorTimeMs = sourceTimestampMs + cursorTimelineOffsetMs.
+				cursorTimelineOffsetMs = getCursorTelemetryOffsetMs(
 					firstDecodedFrameTimestampUs,
 					this.metadata,
 				);
@@ -495,7 +533,7 @@ export class StreamingVideoDecoder {
 					heldFrame,
 					exportFrameIndex * frameDurationUs,
 					sourceTimestampMs,
-					sourceTimestampMs,
+					sourceTimestampMs + cursorTimelineOffsetMs,
 				);
 				segmentFrameIndex++;
 				exportFrameIndex++;

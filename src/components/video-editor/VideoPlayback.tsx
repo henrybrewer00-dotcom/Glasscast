@@ -66,6 +66,19 @@ import {
 	stepSpringValue,
 } from "./videoPlayback/motionSmoothing";
 
+function hexToRgba(hex: string, alpha: number): string {
+	const normalized = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(hex) ? hex : "#ffffff";
+	const value =
+		normalized.length === 4
+			? `#${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}${normalized[3]}${normalized[3]}`
+			: normalized;
+	const color = Number.parseInt(value.slice(1), 16);
+	const red = (color >> 16) & 255;
+	const green = (color >> 8) & 255;
+	const blue = color & 255;
+	return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
 function getContributedCursorStylesSignature() {
 	return extensionHost
 		.getContributedCursorStyles()
@@ -148,7 +161,11 @@ import {
 	DEFAULT_CURSOR_SWAY,
 	DEFAULT_PADDING,
 	DEFAULT_WEBCAM_CORNER_RADIUS,
+	DEFAULT_WEBCAM_FULLSCREEN_RING_LIGHT,
+	DEFAULT_WEBCAM_LAYOUT_TRANSITION_MS,
 	DEFAULT_WEBCAM_REACT_TO_ZOOM,
+	DEFAULT_WEBCAM_RING_COLOR,
+	DEFAULT_WEBCAM_RING_LIGHT,
 	DEFAULT_WEBCAM_SHADOW,
 	DEFAULT_WEBCAM_SIZE,
 	DEFAULT_ZOOM_IN_DURATION_MS,
@@ -171,10 +188,7 @@ import { clampFocusToStage as clampFocusToStageUtil } from "./videoPlayback/focu
 import { layoutVideoContent as layoutVideoContentUtil } from "./videoPlayback/layoutUtils";
 import { updateOverlayIndicator } from "./videoPlayback/overlayUtils";
 import { createVideoEventHandlers } from "./videoPlayback/videoEventHandlers";
-import {
-	getWebcamMediaTargetTimeSeconds,
-	shouldSeekWebcamMedia,
-} from "./videoPlayback/webcamSync";
+import { getWebcamMediaTargetTimeSeconds, shouldSeekWebcamMedia } from "./videoPlayback/webcamSync";
 import { findDominantRegion } from "./videoPlayback/zoomRegionUtils";
 import {
 	applyZoomTransform,
@@ -183,6 +197,12 @@ import {
 	createMotionBlurState,
 	type MotionBlurState,
 } from "./videoPlayback/zoomTransform";
+import {
+	getWebcamCoverContentRect,
+	getWebcamFullscreenProgressAtTime,
+	getWebcamLayoutRect,
+	getWebcamLayoutRingLight,
+} from "./webcamLayout";
 import {
 	getWebcamCropSourceRect,
 	getWebcamOverlayPosition,
@@ -522,10 +542,20 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const webcamVideoRef = useRef<HTMLVideoElement | null>(null);
 		const webcamBubbleRef = useRef<HTMLDivElement | null>(null);
 		const webcamBubbleInnerRef = useRef<HTMLDivElement | null>(null);
+		const webcamBubbleContentRef = useRef<HTMLDivElement | null>(null);
+		const webcamRingRef = useRef<HTMLDivElement | null>(null);
 		const [webcamVideoDimensions, setWebcamVideoDimensions] = useState<{
 			width: number;
 			height: number;
 		} | null>(null);
+		const webcamVideoDimensionsRef = useRef<{ width: number; height: number } | null>(null);
+		useEffect(() => {
+			webcamVideoDimensionsRef.current = webcamVideoDimensions;
+		}, [webcamVideoDimensions]);
+		const webcamLayoutRef = useRef(webcam?.layout);
+		useEffect(() => {
+			webcamLayoutRef.current = webcam?.layout;
+		}, [webcam?.layout]);
 		const captionBoxRef = useRef<HTMLDivElement | null>(null);
 		const currentTimeRef = useRef(0);
 		const zoomRegionsRef = useRef<ZoomRegion[]>([]);
@@ -781,6 +811,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		const webcamCorner = webcam?.corner ?? "bottom-right";
 		const webcamCornerRadius = webcam?.cornerRadius ?? DEFAULT_WEBCAM_CORNER_RADIUS;
 		const webcamShadow = webcam?.shadow ?? DEFAULT_WEBCAM_SHADOW;
+		const webcamRingLight = webcam?.ringLight ?? DEFAULT_WEBCAM_RING_LIGHT;
+		const webcamRingColor = webcam?.ringColor ?? DEFAULT_WEBCAM_RING_COLOR;
 		const webcamTimeOffsetMs = webcam?.timeOffsetMs;
 		const webcamCropRegion = webcam?.cropRegion;
 		const webcamMirror = webcam?.mirror ?? false;
@@ -811,7 +843,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 		}, [webcamCropRegion, webcamVideoDimensions]);
 
 		const applyWebcamBubbleLayout = useCallback(
-			(zoomScale: number) => {
+			(zoomScale: number, timeMs: number = currentTimeRef.current) => {
 				const bubble = webcamBubbleRef.current;
 				const bubbleInner = webcamBubbleInnerRef.current;
 				const overlay = overlayRef.current;
@@ -822,18 +854,29 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					return;
 				}
 
-				const scaledSize = getWebcamOverlaySizePx({
-					containerWidth: overlay.clientWidth,
-					containerHeight: overlay.clientHeight,
+				const containerWidth = overlay.clientWidth;
+				const containerHeight = overlay.clientHeight;
+
+				// Fullscreen ("just me") vs bubble framing, resolved from the live-recorded
+				// layout timeline and eased across switches. 0 = bubble, 1 = fullscreen.
+				const fullscreenProgress = getWebcamFullscreenProgressAtTime(
+					webcamLayoutRef.current,
+					timeMs,
+					DEFAULT_WEBCAM_LAYOUT_TRANSITION_MS,
+				);
+
+				const bubbleSize = getWebcamOverlaySizePx({
+					containerWidth,
+					containerHeight,
 					sizePercent: webcamSize,
 					margin: webcamMargin,
 					zoomScale,
 					reactToZoom: webcamReactToZoom,
 				});
-				const { x, y } = getWebcamOverlayPosition({
-					containerWidth: overlay.clientWidth,
-					containerHeight: overlay.clientHeight,
-					size: scaledSize,
+				const bubblePos = getWebcamOverlayPosition({
+					containerWidth,
+					containerHeight,
+					size: bubbleSize,
 					margin: webcamMargin,
 					positionPreset: webcamPositionPreset,
 					positionX: webcamPositionX,
@@ -841,22 +884,51 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 					legacyCorner: webcamCorner,
 				});
 
+				// Morph the bubble rect toward a full-frame rect.
+				const rect = getWebcamLayoutRect({
+					bubbleX: bubblePos.x,
+					bubbleY: bubblePos.y,
+					bubbleSize,
+					bubbleRadiusPercent: webcamCornerRadius,
+					frameWidth: containerWidth,
+					frameHeight: containerHeight,
+					fullscreenProgress,
+				});
+
 				bubble.style.display = "block";
-				bubble.style.left = `${x}px`;
-				bubble.style.top = `${y}px`;
-				bubble.style.width = `${scaledSize}px`;
-				bubble.style.height = `${scaledSize}px`;
-				bubble.style.aspectRatio = "1 / 1";
+				bubble.style.left = `${rect.x}px`;
+				bubble.style.top = `${rect.y}px`;
+				bubble.style.width = `${rect.width}px`;
+				bubble.style.height = `${rect.height}px`;
+				bubble.style.aspectRatio = "auto";
+				// Fullscreen sits above the screen (covering it); keep bubble layering as-is.
+				bubble.style.zIndex = fullscreenProgress > 0.001 ? "5" : "";
 				const squirclePath = getSquircleSvgPath({
 					x: 0,
 					y: 0,
-					width: scaledSize,
-					height: scaledSize,
-					radius: webcamCornerRadius,
+					width: rect.width,
+					height: rect.height,
+					radius: rect.radiusPercent,
 				});
-				bubble.style.filter = `drop-shadow(0 ${Math.round(scaledSize * 0.06)}px ${Math.round(
-					scaledSize * 0.22,
+
+				const refDim = Math.min(rect.width, rect.height);
+				const dropShadow = `drop-shadow(0 ${Math.round(refDim * 0.06)}px ${Math.round(
+					refDim * 0.22,
 				)}px rgba(0, 0, 0, ${webcamShadow}))`;
+				// Outer ring-light glow hugs the bubble; it fades out as we go fullscreen
+				// (a full-frame webcam's outer glow would fall outside the frame).
+				const outerRing = webcamRingLight * (1 - fullscreenProgress);
+				const ringGlow =
+					outerRing > 0
+						? ` drop-shadow(0 0 ${Math.round(refDim * 0.04 + refDim * 0.06 * outerRing)}px ${hexToRgba(
+								webcamRingColor,
+								Math.min(1, 0.55 * outerRing + 0.25),
+							)}) drop-shadow(0 0 ${Math.round(refDim * 0.12 + refDim * 0.18 * outerRing)}px ${hexToRgba(
+								webcamRingColor,
+								Math.min(1, 0.45 * outerRing),
+							)})`
+						: "";
+				bubble.style.filter = `${dropShadow}${ringGlow}`;
 				bubble.style.borderRadius = "0px";
 				bubble.style.boxShadow = "none";
 
@@ -865,10 +937,57 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				bubbleInner.style.contain = "paint";
 				bubbleInner.style.clipPath = `path('${squirclePath}')`;
 				bubbleInner.style.setProperty("-webkit-clip-path", `path('${squirclePath}')`);
+
+				// object-fit: cover the (possibly non-square) rect, generalized so the same
+				// path drives bubble, fullscreen, and every frame of the morph between them.
+				const content = webcamBubbleContentRef.current;
+				const sourceDims = webcamVideoDimensionsRef.current;
+				if (content && sourceDims) {
+					const cover = getWebcamCoverContentRect({
+						containerWidth: rect.width,
+						containerHeight: rect.height,
+						sourceWidth: sourceDims.width,
+						sourceHeight: sourceDims.height,
+						crop: webcamCropRegion,
+					});
+					content.style.left = `${cover.left}px`;
+					content.style.top = `${cover.top}px`;
+					content.style.width = `${cover.width}px`;
+					content.style.height = `${cover.height}px`;
+					content.style.maxWidth = "none";
+				}
+
+				// Inner ring-light: a glow inset around the frame edges for the fullscreen
+				// "light ring around the display" look. Fades in with the morph and sits
+				// above the webcam so it stays visible.
+				const ring = webcamRingRef.current;
+				if (ring) {
+					const innerRing = getWebcamLayoutRingLight({
+						baseRingLight: webcamRingLight,
+						fullscreenRingLight: DEFAULT_WEBCAM_FULLSCREEN_RING_LIGHT,
+						fullscreenProgress,
+					});
+					const ringAlpha = fullscreenProgress * Math.min(1, innerRing);
+					if (ringAlpha > 0.001) {
+						const spread = Math.round(refDim * (0.02 + 0.05 * innerRing));
+						const blur = Math.round(refDim * (0.04 + 0.1 * innerRing));
+						ring.style.opacity = `${ringAlpha}`;
+						ring.style.boxShadow = `inset 0 0 ${blur}px ${spread}px ${hexToRgba(
+							webcamRingColor,
+							Math.min(1, 0.6 * innerRing + 0.2),
+						)}`;
+						ring.style.clipPath = `path('${squirclePath}')`;
+						ring.style.setProperty("-webkit-clip-path", `path('${squirclePath}')`);
+					} else {
+						ring.style.opacity = "0";
+						ring.style.boxShadow = "none";
+					}
+				}
 			},
 			[
 				webcamCorner,
 				webcamCornerRadius,
+				webcamCropRegion,
 				webcamEnabled,
 				webcamMargin,
 				webcamPositionPreset,
@@ -876,6 +995,8 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 				webcamPositionY,
 				webcamReactToZoom,
 				webcamShadow,
+				webcamRingLight,
+				webcamRingColor,
 				webcamSize,
 				webcamVideoPath,
 			],
@@ -2946,6 +3067,7 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 										}}
 									>
 										<div
+											ref={webcamBubbleContentRef}
 											className="pointer-events-none absolute"
 											style={webcamCropPreviewContentStyle}
 										>
@@ -2962,6 +3084,11 @@ const VideoPlayback = forwardRef<VideoPlaybackRef, VideoPlaybackProps>(
 											/>
 										</div>
 									</div>
+									<div
+										ref={webcamRingRef}
+										className="pointer-events-none absolute inset-0"
+										style={{ opacity: 0 }}
+									/>
 								</div>
 							</div>
 						) : null}

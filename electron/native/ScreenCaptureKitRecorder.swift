@@ -66,7 +66,11 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 		}
 
 		let config = try JSONDecoder().decode(CaptureConfig.self, from: data)
+		fputs("DIAG fetchingShareableContent\n", stderr)
+		fflush(stderr)
 		let availableContent = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+		fputs("DIAG shareableContent displays=\(availableContent.displays.count) windows=\(availableContent.windows.count)\n", stderr)
+		fflush(stderr)
 		let streamConfig = SCStreamConfiguration()
 		capturesSystemAudio = config.capturesSystemAudio ?? false
 		capturesMicrophone = config.capturesMicrophone ?? false
@@ -253,7 +257,11 @@ final class ScreenCaptureRecorder: NSObject, SCStreamOutput, SCStreamDelegate {
 			}
 			try stream.addStreamOutput(self, type: microphoneOutputType, sampleHandlerQueue: queue)
 		}
+		fputs("DIAG startingCapture\n", stderr)
+		fflush(stderr)
 		try await stream.startCapture()
+		fputs("DIAG startCaptureReturned\n", stderr)
+		fflush(stderr)
 
 		guard assetWriter.startWriting() else {
 			throw NSError(domain: "RecordlyCapture", code: 8, userInfo: [NSLocalizedDescriptionKey: assetWriter.error?.localizedDescription ?? "Unable to start video writing"])
@@ -660,13 +668,17 @@ let _ = CGMainDisplayID()
 // attempting capture. On macOS 15+, a one-session grant may expire after the
 // parent app restarts.  CGRequestScreenCaptureAccess() will trigger the
 // system-level permission dialog (or open System Settings) when not yet granted.
-if !CGPreflightScreenCaptureAccess() {
-	let granted = CGRequestScreenCaptureAccess()
-	if !granted {
-		fputs("SCREEN_RECORDING_PERMISSION_DENIED\n", stderr)
-		fflush(stderr)
-		exit(1)
-	}
+let hasScreenAccess = CGPreflightScreenCaptureAccess()
+fputs("DIAG preflightScreenAccess=\(hasScreenAccess)\n", stderr)
+fflush(stderr)
+if !hasScreenAccess {
+	// Requesting access from a headless child process can block indefinitely
+	// (the prompt can't be presented), which surfaces to the app as a generic
+	// start timeout. Fail fast with a clear signal instead of hanging so the
+	// app can tell the user to grant Screen Recording and relaunch.
+	fputs("SCREEN_RECORDING_PERMISSION_DENIED\n", stderr)
+	fflush(stderr)
+	exit(1)
 }
 
 // Pre-flight check for microphone access when mic capture is requested.

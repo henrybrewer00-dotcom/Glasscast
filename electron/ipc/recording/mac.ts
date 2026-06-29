@@ -7,6 +7,7 @@ import {
 	persistPendingCursorTelemetry,
 	snapshotCursorTelemetryForPersistence,
 } from "../cursor/telemetry";
+import { persistWebcamLayout } from "../webcam/layout";
 import {
 	type InlineAudioProbe,
 	decideMacAudioMux,
@@ -43,14 +44,37 @@ import { pruneAutoRecordings } from "./prune";
 
 export function waitForNativeCaptureStart(process: ChildProcessWithoutNullStreams) {
 	return new Promise<void>((resolve, reject) => {
+		// A helper that never signals "Recording started" is wedged inside
+		// SCStream.startCapture(); if we leave it alive it keeps holding a
+		// ScreenCaptureKit session and blocks every subsequent recording attempt
+		// (the jam compounds with each retry). Always kill it on timeout/error.
+		const killHelper = () => {
+			try {
+				process.kill("SIGKILL");
+			} catch {
+				// already gone
+			}
+		};
+
 		const timer = setTimeout(() => {
 			cleanup();
-			reject(new Error("Timed out waiting for ScreenCaptureKit recorder to start"));
+			killHelper();
+			const helperOutput = nativeCaptureOutputBuffer.trim();
+			console.error("[mac-capture] start timed out. Helper output:\n", helperOutput);
+			reject(
+				new Error(
+					`Timed out waiting for ScreenCaptureKit recorder to start${
+						helperOutput ? ` — helper output: ${helperOutput}` : " (helper produced no output)"
+					}`,
+				),
+			);
 		}, 12000);
 
 		let stdoutBuffer = "";
 		const onStdout = (chunk: Buffer) => {
-			stdoutBuffer += chunk.toString();
+			const text = chunk.toString();
+			console.error("[mac-capture stdout]", text.trimEnd());
+			stdoutBuffer += text;
 			if (stdoutBuffer.includes("Recording started")) {
 				cleanup();
 				resolve();
@@ -59,6 +83,7 @@ export function waitForNativeCaptureStart(process: ChildProcessWithoutNullStream
 
 		const onError = (error: Error) => {
 			cleanup();
+			killHelper();
 			reject(error);
 		};
 
@@ -308,6 +333,11 @@ export async function finalizeStoredVideo(videoPath: string) {
 		await persistPendingCursorTelemetry(videoPath);
 	} catch (error) {
 		console.warn("[mac-stop] Failed to persist cursor telemetry:", error);
+	}
+	try {
+		await persistWebcamLayout(videoPath);
+	} catch (error) {
+		console.warn("[mac-stop] Failed to persist webcam layout:", error);
 	}
 	if (isAutoRecordingPath(videoPath)) {
 		await pruneAutoRecordings([videoPath]);

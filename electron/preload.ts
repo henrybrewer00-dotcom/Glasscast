@@ -607,6 +607,44 @@ contextBridge.exposeInMainWorld("electronAPI", {
 	setCursorTelemetry: (videoPath: string | undefined, samples: CursorTelemetryPoint[]) => {
 		return ipcRenderer.invoke("set-cursor-telemetry", videoPath, samples);
 	},
+	teleprompterSetState: (next: Record<string, unknown>) => {
+		return ipcRenderer.invoke("teleprompter-set-state", next);
+	},
+	requestTeleprompterState: () => {
+		return ipcRenderer.invoke("teleprompter-request-state");
+	},
+	onTeleprompterState: (
+		callback: (state: {
+			visible: boolean;
+			script: string;
+			speed: number;
+			fontSize: number;
+			opacity: number;
+			voicePaced: boolean;
+			microphoneDeviceId?: string | null;
+		}) => void,
+	) => {
+		const listener = (
+			_event: Electron.IpcRendererEvent,
+			payload: {
+				visible: boolean;
+				script: string;
+				speed: number;
+				fontSize: number;
+				opacity: number;
+				voicePaced: boolean;
+				microphoneDeviceId?: string | null;
+			},
+		) => callback(payload);
+		ipcRenderer.on("teleprompter-state", listener);
+		return () => ipcRenderer.removeListener("teleprompter-state", listener);
+	},
+	recordWebcamLayoutEvent: (mode: "fullscreen" | "bubble") => {
+		return ipcRenderer.invoke("record-webcam-layout-event", mode);
+	},
+	getWebcamLayout: (videoPath?: string) => {
+		return ipcRenderer.invoke("get-webcam-layout", videoPath);
+	},
 	getSystemCursorAssets: () => {
 		return ipcRenderer.invoke("get-system-cursor-assets");
 	},
@@ -614,6 +652,17 @@ contextBridge.exposeInMainWorld("electronAPI", {
 		const listener = () => callback();
 		ipcRenderer.on("stop-recording-from-tray", listener);
 		return () => ipcRenderer.removeListener("stop-recording-from-tray", listener);
+	},
+	setWebcamLayoutShortcutsEnabled: (enabled: boolean) => {
+		return ipcRenderer.invoke("set-webcam-layout-shortcuts-enabled", enabled);
+	},
+	onWebcamLayoutModeChanged: (callback: (mode: "fullscreen" | "bubble") => void) => {
+		const listener = (
+			_event: Electron.IpcRendererEvent,
+			payload: { mode: "fullscreen" | "bubble" },
+		) => callback(payload.mode);
+		ipcRenderer.on("webcam-layout-mode-changed", listener);
+		return () => ipcRenderer.removeListener("webcam-layout-mode-changed", listener);
 	},
 	onRecordingStateChanged: (
 		callback: (state: { recording: boolean; sourceName: string }) => void,

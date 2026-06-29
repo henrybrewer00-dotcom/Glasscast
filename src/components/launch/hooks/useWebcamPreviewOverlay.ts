@@ -1,8 +1,52 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
+import { type PointerEvent, useCallback, useEffect, useRef, useState } from "react";
 import { canShowFloatingWebcamPreview } from "../floatingWebcamPreview";
 
 const WEBCAM_PREVIEW_DRAG_THRESHOLD = 6;
 const DEFAULT_WEBCAM_PREVIEW_OFFSET = { x: 0, y: 0 };
+const WEBCAM_PREVIEW_OFFSET_STORAGE_KEY = "glasscast.webcamPreviewOffset";
+const WEBCAM_PREVIEW_LOCKED_STORAGE_KEY = "glasscast.webcamPreviewLocked";
+
+function loadStoredWebcamPreviewLocked(): boolean {
+	try {
+		const raw = window.localStorage?.getItem(WEBCAM_PREVIEW_LOCKED_STORAGE_KEY);
+		// Default to locked: a locked preview has no hitbox, so it never captures
+		// clicks/scroll/keystrokes meant for the app being recorded.
+		if (raw === null || raw === undefined) return true;
+		return raw !== "false";
+	} catch {
+		return true;
+	}
+}
+
+function storeWebcamPreviewLocked(locked: boolean): void {
+	try {
+		window.localStorage?.setItem(WEBCAM_PREVIEW_LOCKED_STORAGE_KEY, locked ? "true" : "false");
+	} catch {
+		// ignore unavailable storage
+	}
+}
+
+function loadStoredWebcamPreviewOffset(): { x: number; y: number } {
+	try {
+		const raw = window.localStorage?.getItem(WEBCAM_PREVIEW_OFFSET_STORAGE_KEY);
+		if (!raw) return DEFAULT_WEBCAM_PREVIEW_OFFSET;
+		const parsed = JSON.parse(raw) as { x?: unknown; y?: unknown };
+		if (typeof parsed?.x === "number" && typeof parsed?.y === "number") {
+			return { x: parsed.x, y: parsed.y };
+		}
+	} catch {
+		// ignore malformed/unavailable storage
+	}
+	return DEFAULT_WEBCAM_PREVIEW_OFFSET;
+}
+
+function storeWebcamPreviewOffset(offset: { x: number; y: number }): void {
+	try {
+		window.localStorage?.setItem(WEBCAM_PREVIEW_OFFSET_STORAGE_KEY, JSON.stringify(offset));
+	} catch {
+		// ignore unavailable storage
+	}
+}
 
 export function useWebcamPreviewOverlay({
 	webcamEnabled,
@@ -18,8 +62,13 @@ export function useWebcamPreviewOverlay({
 	hudOverlayMousePassthroughSupported: boolean | null;
 }) {
 	const [showFloatingWebcamPreview, setShowFloatingWebcamPreview] = useState(true);
-	const [webcamPreviewOffset, setWebcamPreviewOffset] = useState(DEFAULT_WEBCAM_PREVIEW_OFFSET);
-	const webcamPreviewOffsetRef = useRef(DEFAULT_WEBCAM_PREVIEW_OFFSET);
+	const [webcamPreviewLocked, setWebcamPreviewLockedState] = useState(loadStoredWebcamPreviewLocked);
+	const setWebcamPreviewLocked = useCallback((locked: boolean) => {
+		setWebcamPreviewLockedState(locked);
+		storeWebcamPreviewLocked(locked);
+	}, []);
+	const [webcamPreviewOffset, setWebcamPreviewOffset] = useState(loadStoredWebcamPreviewOffset);
+	const webcamPreviewOffsetRef = useRef(webcamPreviewOffset);
 	const webcamPreviewRef = useRef<HTMLVideoElement | null>(null);
 	const recordingWebcamPreviewRef = useRef<HTMLVideoElement | null>(null);
 	const recordingWebcamPreviewContainerRef = useRef<HTMLDivElement | null>(null);
@@ -50,10 +99,12 @@ export function useWebcamPreviewOverlay({
 
 	useEffect(() => {
 		if (!webcamEnabled) {
-			webcamPreviewOffsetRef.current = DEFAULT_WEBCAM_PREVIEW_OFFSET;
-			setWebcamPreviewOffset(DEFAULT_WEBCAM_PREVIEW_OFFSET);
+			// Keep the user's saved bubble position so it persists across toggles/sessions.
+			const storedOffset = loadStoredWebcamPreviewOffset();
+			webcamPreviewOffsetRef.current = storedOffset;
+			setWebcamPreviewOffset(storedOffset);
 			if (recordingWebcamPreviewContainerRef.current) {
-				recordingWebcamPreviewContainerRef.current.style.transform = "translate(0px, 0px)";
+				recordingWebcamPreviewContainerRef.current.style.transform = `translate(${storedOffset.x}px, ${storedOffset.y}px)`;
 			}
 			webcamPreviewDragStartRef.current = null;
 			isWebcamPreviewDraggingRef.current = false;
@@ -61,32 +112,29 @@ export function useWebcamPreviewOverlay({
 		}
 	}, [webcamEnabled]);
 
-	const handleWebcamPreviewPointerDown = useCallback(
-		(event: PointerEvent<HTMLDivElement>) => {
-			if (event.button !== 0) {
-				return;
-			}
+	const handleWebcamPreviewPointerDown = useCallback((event: PointerEvent<HTMLDivElement>) => {
+		if (event.button !== 0) {
+			return;
+		}
 
-			const previewRect = event.currentTarget.getBoundingClientRect();
+		const previewRect = event.currentTarget.getBoundingClientRect();
 
-			event.preventDefault();
-			window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
-			webcamPreviewDragStartRef.current = {
-				pointerId: event.pointerId,
-				startX: event.clientX,
-				startY: event.clientY,
-				originX: webcamPreviewOffsetRef.current.x,
-				originY: webcamPreviewOffsetRef.current.y,
-				initialLeft: previewRect.left,
-				initialTop: previewRect.top,
-				previewWidth: previewRect.width,
-				previewHeight: previewRect.height,
-				dragging: false,
-			};
-			event.currentTarget.setPointerCapture(event.pointerId);
-		},
-		[],
-	);
+		event.preventDefault();
+		window.electronAPI?.hudOverlaySetIgnoreMouse?.(false);
+		webcamPreviewDragStartRef.current = {
+			pointerId: event.pointerId,
+			startX: event.clientX,
+			startY: event.clientY,
+			originX: webcamPreviewOffsetRef.current.x,
+			originY: webcamPreviewOffsetRef.current.y,
+			initialLeft: previewRect.left,
+			initialTop: previewRect.top,
+			previewWidth: previewRect.width,
+			previewHeight: previewRect.height,
+			dragging: false,
+		};
+		event.currentTarget.setPointerCapture(event.pointerId);
+	}, []);
 
 	const handleWebcamPreviewPointerMove = useCallback((event: PointerEvent<HTMLDivElement>) => {
 		const dragState = webcamPreviewDragStartRef.current;
@@ -160,6 +208,7 @@ export function useWebcamPreviewOverlay({
 		webcamPreviewDragStartRef.current = null;
 		isWebcamPreviewDraggingRef.current = false;
 		setWebcamPreviewOffset({ ...webcamPreviewOffsetRef.current });
+		storeWebcamPreviewOffset(webcamPreviewOffsetRef.current);
 		if (event.currentTarget.hasPointerCapture(event.pointerId)) {
 			event.currentTarget.releasePointerCapture(event.pointerId);
 		}
@@ -225,12 +274,12 @@ export function useWebcamPreviewOverlay({
 								width: { ideal: 320 },
 								height: { ideal: 320 },
 								frameRate: { ideal: 24, max: 30 },
-						  }
+							}
 						: {
 								width: { ideal: 320 },
 								height: { ideal: 320 },
 								frameRate: { ideal: 24, max: 30 },
-						  },
+							},
 					audio: false,
 				});
 
@@ -271,6 +320,8 @@ export function useWebcamPreviewOverlay({
 	return {
 		showFloatingWebcamPreview,
 		setShowFloatingWebcamPreview,
+		webcamPreviewLocked,
+		setWebcamPreviewLocked,
 		webcamPreviewOffset,
 		recordingWebcamPreviewContainerRef,
 		isWebcamPreviewDraggingRef,

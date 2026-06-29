@@ -7,6 +7,7 @@ import {
 	Cursor,
 	FolderOpen,
 	Gear,
+	SlidersHorizontal as InspectorToggleIcon,
 	Pause,
 	Camera as PhCameraRegular,
 	Play,
@@ -16,7 +17,6 @@ import {
 	Scissors,
 	SkipBack,
 	SkipForward,
-	SlidersHorizontal as InspectorToggleIcon,
 	Sparkle,
 	ArrowCounterClockwise as Undo2,
 	UserCircle as User,
@@ -50,6 +50,9 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Toaster } from "@/components/ui/sonner";
 import { useI18n } from "@/contexts/I18nContext";
 import { useShortcuts } from "@/contexts/ShortcutsContext";
+import { AgentSettingsProvider } from "@/lib/agent/AgentSettingsContext";
+import type { ToolCall } from "@/lib/agent/providers";
+import { loadAppSetting, saveAppSetting } from "@/lib/appSettings";
 import {
 	calculateOutputDimensions,
 	DEFAULT_MP4_CODEC,
@@ -71,24 +74,14 @@ import {
 	type SupportedMp4Dimensions,
 	VideoExporter,
 } from "@/lib/exporter";
+import { DISCARD_CONFIRM_PHRASE, evaluateDiscardGate } from "@/lib/exporter/discardSafety";
 import { getMp4ExportBitrate, getSourceQualityBitrate } from "@/lib/exporter/exportBitrate";
-import {
-	DISCARD_CONFIRM_PHRASE,
-	evaluateDiscardGate,
-} from "@/lib/exporter/discardSafety";
 import {
 	canUseInMemoryExportSaveFallback,
 	describeBlockedInMemoryExportSave,
 } from "@/lib/exporter/exportSavePolicy";
-import { loadAppSetting, saveAppSetting } from "@/lib/appSettings";
 import { matchesShortcut } from "@/lib/shortcuts";
-import { AgentSettingsProvider } from "@/lib/agent/AgentSettingsContext";
-import type { ToolCall } from "@/lib/agent/providers";
-import {
-	type KeyboardSoundPreset,
-	type MouseSoundPreset,
-	soundEffects,
-} from "@/lib/soundEffects";
+import { type KeyboardSoundPreset, type MouseSoundPreset, soundEffects } from "@/lib/soundEffects";
 import { cn } from "@/lib/utils";
 import {
 	ASPECT_RATIOS,
@@ -130,14 +123,14 @@ const PhWand = (props: { className?: string; weight?: "fill" | "regular" }) => (
 	<WandSparkles weight={props.weight ?? "regular"} className={props.className} />
 );
 
+import { AccountPanel } from "@/components/cloud/AccountPanel";
 import type { SourceAudioTrackSettings } from "@/components/video-editor/audio/audioTypes";
 import { extensionHost } from "@/lib/extensions";
+import { AgentKeyPanel } from "./AgentKeyPanel";
 import { useVideoEditorAudio } from "./audio/useVideoEditorAudio";
 import { resolveAutoCaptionSourcePath } from "./autoCaptionSource";
 import { CropControl } from "./CropControl";
 import { ExportSettingsMenu } from "./ExportSettingsMenu";
-import { AccountPanel } from "@/components/cloud/AccountPanel";
-import { AgentKeyPanel } from "./AgentKeyPanel";
 import ExtensionManager from "./ExtensionManager";
 import {
 	createEditorHistoryStack,
@@ -172,13 +165,9 @@ import {
 import { SettingsPanel, type WhisperModelUiState } from "./SettingsPanel";
 import { getDevOpenRecordingConfig, getSmokeExportConfig } from "./smokeExportConfig";
 import { createSmokeExportProgressSampler } from "./smokeExportProgress";
-import {
-	FeedbackDialog,
-	openExternalLink,
-	GLASSCAST_ISSUES_URL,
-} from "./TutorialHelp";
-import TimelineEditor, { type TimelineEditorHandle } from "./timeline/TimelineEditor";
+import { FeedbackDialog, GLASSCAST_ISSUES_URL, openExternalLink } from "./TutorialHelp";
 import { detectEndTrim } from "./timeline/endTrimDetection";
+import TimelineEditor, { type TimelineEditorHandle } from "./timeline/TimelineEditor";
 import {
 	normalizeCursorTelemetry,
 	shouldAutoApplyFreshRecordingZoomsForSource,
@@ -200,7 +189,6 @@ import {
 	DEFAULT_ANNOTATION_STYLE,
 	DEFAULT_AUTO_CAPTION_SETTINGS,
 	DEFAULT_AUTO_ZOOM_DEPTH,
-	DEFAULT_ZOOM_DEPTH,
 	DEFAULT_CONNECTED_ZOOM_DURATION_MS,
 	DEFAULT_CONNECTED_ZOOM_EASING,
 	DEFAULT_CONNECTED_ZOOM_GAP_MS,
@@ -209,6 +197,7 @@ import {
 	DEFAULT_FIGURE_DATA,
 	DEFAULT_WEBCAM_OVERLAY,
 	DEFAULT_WEBCAM_TIME_OFFSET_MS,
+	DEFAULT_ZOOM_DEPTH,
 	DEFAULT_ZOOM_IN_DURATION_MS,
 	DEFAULT_ZOOM_IN_EASING,
 	DEFAULT_ZOOM_IN_OVERLAP_MS,
@@ -226,6 +215,7 @@ import {
 	type SpeedRegion,
 	type TrimRegion,
 	trimsToClips,
+	type WebcamLayoutEvent,
 	type WebcamOverlaySettings,
 	type ZoomDepth,
 	type ZoomFocus,
@@ -526,6 +516,10 @@ export default function VideoEditor() {
 		() => loadAppSetting<MouseSoundPreset>("soundMousePreset") ?? "off",
 	);
 	const [cursorTelemetry, setCursorTelemetry] = useState<CursorTelemetryPoint[]>([]);
+	// Webcam fullscreen/bubble timeline captured live during recording (keys 1/2),
+	// loaded from the sidecar like cursor telemetry and injected into the webcam
+	// settings at render time so it survives project save/load.
+	const [recordedWebcamLayout, setRecordedWebcamLayout] = useState<WebcamLayoutEvent[]>([]);
 	// Tracks the videoSourcePath for which the cursor telemetry IPC has already
 	// resolved. The smoke-export auto-trigger waits on this so long recordings
 	// still bake cursor/zoom animations into the output — without it, the
@@ -2743,9 +2737,7 @@ export default function VideoEditor() {
 
 			setWhisperModels((models) =>
 				models.map((model) =>
-					model.id === modelId
-						? { ...model, status: "downloading", progress: 0 }
-						: model,
+					model.id === modelId ? { ...model, status: "downloading", progress: 0 } : model,
 				),
 			);
 
@@ -2790,8 +2782,7 @@ export default function VideoEditor() {
 
 	const handleDeleteWhisperModel = useCallback(
 		async (modelId: string) => {
-			const deletedPath =
-				whisperModels.find((model) => model.id === modelId)?.path ?? null;
+			const deletedPath = whisperModels.find((model) => model.id === modelId)?.path ?? null;
 			const result = await window.electronAPI.deleteWhisperModel(modelId);
 			if (!result.success) {
 				toast.error(result.error || "Failed to delete Whisper model");
@@ -2838,27 +2829,24 @@ export default function VideoEditor() {
 		void refreshCaptionKeyStatuses();
 	}, [refreshCaptionKeyStatuses]);
 
-	const handleSaveCaptionKey = useCallback(
-		async (provider: string, key: string) => {
-			const trimmed = key.trim();
-			if (!trimmed) {
-				toast.error("Enter an API key first");
-				return;
-			}
-			const result = await window.electronAPI.saveCaptionKey({ provider, key: trimmed });
-			if (!result.success || !result.status) {
-				toast.error(result.error || "Failed to save API key");
-				return;
-			}
-			const status = result.status;
-			setCaptionKeyStatuses((prev) => ({
-				...prev,
-				[provider]: { hasKey: status.hasKey, last4: status.last4 },
-			}));
-			toast.success("API key saved");
-		},
-		[],
-	);
+	const handleSaveCaptionKey = useCallback(async (provider: string, key: string) => {
+		const trimmed = key.trim();
+		if (!trimmed) {
+			toast.error("Enter an API key first");
+			return;
+		}
+		const result = await window.electronAPI.saveCaptionKey({ provider, key: trimmed });
+		if (!result.success || !result.status) {
+			toast.error(result.error || "Failed to save API key");
+			return;
+		}
+		const status = result.status;
+		setCaptionKeyStatuses((prev) => ({
+			...prev,
+			[provider]: { hasKey: status.hasKey, last4: status.last4 },
+		}));
+		toast.success("API key saved");
+	}, []);
 
 	const handleDeleteCaptionKey = useCallback(async (provider: string) => {
 		const result = await window.electronAPI.deleteCaptionKey(provider);
@@ -3368,6 +3356,29 @@ export default function VideoEditor() {
 		};
 	}, [videoPath, videoSourcePath]);
 
+	useEffect(() => {
+		let mounted = true;
+		async function loadWebcamLayout() {
+			if (!videoSourcePath) {
+				if (mounted) setRecordedWebcamLayout([]);
+				return;
+			}
+			try {
+				const result = await window.electronAPI.getWebcamLayout?.(videoSourcePath);
+				if (mounted) {
+					setRecordedWebcamLayout(result?.success ? (result.events ?? []) : []);
+				}
+			} catch (error) {
+				console.warn("Unable to load webcam layout:", error);
+				if (mounted) setRecordedWebcamLayout([]);
+			}
+		}
+		void loadWebcamLayout();
+		return () => {
+			mounted = false;
+		};
+	}, [videoSourcePath]);
+
 	const normalizedCursorTelemetry = useMemo(() => {
 		if (cursorTelemetry.length === 0) {
 			return [] as CursorTelemetryPoint[];
@@ -3403,6 +3414,15 @@ export default function VideoEditor() {
 			displayedTimelineWindow.startMs,
 		);
 	}, [loopCursor, normalizedCursorTelemetry, displayedTimelineWindow]);
+
+	// Inject the live-recorded fullscreen/bubble timeline into the webcam settings
+	// for rendering (preview + export). An explicit setting on `webcam.layout`
+	// takes precedence, otherwise the recording's sidecar timeline is used.
+	const webcamWithLayout = useMemo<WebcamOverlaySettings>(() => {
+		const layout =
+			webcam.layout && webcam.layout.length > 0 ? webcam.layout : recordedWebcamLayout;
+		return layout && layout.length > 0 ? { ...webcam, layout } : webcam;
+	}, [webcam, recordedWebcamLayout]);
 
 	// Initialize a full-track clip when duration is first known
 	const clipInitializedRef = useRef(false);
@@ -3622,7 +3642,9 @@ export default function VideoEditor() {
 	const handlePreviewSkipBack = useCallback(() => {
 		const currentMs = timelinePlayheadTime * 1000;
 		const keyframes = timelineRef.current?.keyframes ?? [];
-		const previous = [...keyframes].reverse().find((keyframe) => keyframe.time < currentMs - 50);
+		const previous = [...keyframes]
+			.reverse()
+			.find((keyframe) => keyframe.time < currentMs - 50);
 		handleSeek(previous ? previous.time / 1000 : Math.max(0, timelinePlayheadTime - 5));
 	}, [handleSeek, timelinePlayheadTime]);
 
@@ -3630,9 +3652,7 @@ export default function VideoEditor() {
 		const currentMs = timelinePlayheadTime * 1000;
 		const keyframes = timelineRef.current?.keyframes ?? [];
 		const next = keyframes.find((keyframe) => keyframe.time > currentMs + 50);
-		handleSeek(
-			next ? next.time / 1000 : Math.min(timelineDuration, timelinePlayheadTime + 5),
-		);
+		handleSeek(next ? next.time / 1000 : Math.min(timelineDuration, timelinePlayheadTime + 5));
 	}, [handleSeek, timelineDuration, timelinePlayheadTime]);
 
 	const handleSelectZoom = useCallback((id: string | null) => {
@@ -3927,6 +3947,9 @@ export default function VideoEditor() {
 					)
 					.join("; ")
 			: "none";
+		const webcamDesc = webcam.enabled
+			? `enabled, ${Math.round(webcam.size)}% size, ${webcam.positionPreset} position, roundness ${Math.round(webcam.cornerRadius)}px, shadow ${Math.round(webcam.shadow * 100)}%, ring light ${Math.round((webcam.ringLight ?? 0) * 100)}% color ${webcam.ringColor ?? "#ffffff"}`
+			: "disabled";
 		return [
 			`Video duration: ${durationMs}ms.`,
 			`Playhead: ${playheadMs}ms.`,
@@ -3935,6 +3958,8 @@ export default function VideoEditor() {
 			`Cursor telemetry points: ${cursorTelemetry.length}.`,
 			`Captions: ${autoCaptions.length}.`,
 			`Background: ${wallpaper || "none"}.`,
+			`Padding: ${padding.top}px.`,
+			`Webcam/facecam: ${webcamDesc}.`,
 		].join(" ");
 	}, [
 		duration,
@@ -3944,6 +3969,8 @@ export default function VideoEditor() {
 		cursorTelemetry.length,
 		autoCaptions.length,
 		wallpaper,
+		padding,
+		webcam,
 	]);
 
 	const agentExecuteTool = useCallback(
@@ -4063,11 +4090,123 @@ export default function VideoEditor() {
 					}
 					videoPlaybackRef.current?.pause();
 					return { ok: true, message: "Paused." };
+				case "set_webcam_style": {
+					if (!webcam.enabled) {
+						return {
+							ok: false,
+							message:
+								"The webcam/facecam isn't enabled, so there's nothing to style.",
+						};
+					}
+					const patch: Partial<WebcamOverlaySettings> = {};
+					if (typeof args.ringColor === "string") {
+						const color = args.ringColor.trim();
+						if (!/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(color)) {
+							return { ok: false, message: `"${color}" isn't a valid hex color.` };
+						}
+						patch.ringColor = color;
+					}
+					if (args.ringLight != null) patch.ringLight = clamp01(num(args.ringLight));
+					if (args.shadow != null) patch.shadow = clamp01(num(args.shadow));
+					if (args.cornerRadius != null) {
+						patch.cornerRadius = Math.min(
+							160,
+							Math.max(0, Math.round(num(args.cornerRadius))),
+						);
+					}
+					if (args.size != null) {
+						patch.size = Math.min(100, Math.max(10, Math.round(num(args.size))));
+					}
+					if (Object.keys(patch).length === 0) {
+						return { ok: false, message: "No webcam style changes were provided." };
+					}
+					setWebcam((prev) => ({ ...prev, ...patch }));
+					return {
+						ok: true,
+						message: `Updated webcam style (${Object.keys(patch).join(", ")}).`,
+					};
+				}
+				case "set_padding": {
+					const px = Math.min(200, Math.max(0, Math.round(num(args.px))));
+					if (!Number.isFinite(px)) {
+						return { ok: false, message: "Invalid padding value." };
+					}
+					setPadding((prev) => ({
+						...prev,
+						top: px,
+						right: px,
+						bottom: px,
+						left: px,
+						linked: true,
+					}));
+					return { ok: true, message: `Set padding to ${px}px.` };
+				}
+				case "set_setting": {
+					const key = String(args.key ?? "");
+					const raw = args.value;
+					const asBool = () => raw === true || raw === "true" || raw === "1";
+					switch (key) {
+						case "zoomInDurationMs":
+							setZoomInDurationMs(Math.max(0, num(raw)));
+							break;
+						case "zoomOutDurationMs":
+							setZoomOutDurationMs(Math.max(0, num(raw)));
+							break;
+						case "connectZooms":
+							setConnectZooms(asBool());
+							break;
+						case "zoomMotionBlur":
+							setZoomMotionBlur(clamp01(num(raw)));
+							break;
+						case "soundEffectsEnabled":
+							setSoundEffectsEnabled(asBool());
+							break;
+						default:
+							return {
+								ok: false,
+								message: `Setting "${key}" can't be changed from here yet.`,
+							};
+					}
+					return { ok: true, message: `Set ${key} to ${String(raw)}.` };
+				}
+				case "trim": {
+					const startMs = num(args.startMs);
+					const endMs = num(args.endMs);
+					const totalMs = Math.round(duration * 1000);
+					if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+						return { ok: false, message: "Invalid trim range." };
+					}
+					const keepStart = Math.max(0, Math.round(startMs));
+					const keepEnd = Math.min(totalMs || Math.round(endMs), Math.round(endMs));
+					const regions: TrimRegion[] = [];
+					if (keepStart > 0) {
+						regions.push({
+							id: `trim-${nextZoomIdRef.current++}`,
+							startMs: 0,
+							endMs: keepStart,
+						});
+					}
+					if (totalMs && keepEnd < totalMs) {
+						regions.push({
+							id: `trim-${nextZoomIdRef.current++}`,
+							startMs: keepEnd,
+							endMs: totalMs,
+						});
+					}
+					setTrimRegions(regions);
+					return {
+						ok: true,
+						message: `Trimmed to keep ${keepStart}-${keepEnd}ms.`,
+					};
+				}
 				case "export_video":
 					agentExportRef.current();
 					return { ok: true, message: "Started exporting the video." };
 				default:
-					return { ok: false, message: `"${call.name}" isn't supported in the editor yet.` };
+					return {
+						ok: false,
+						message: `"${call.name}" isn't supported in the editor yet.`,
+					};
 			}
 		},
 		[
@@ -4076,6 +4215,8 @@ export default function VideoEditor() {
 			zoomRegions,
 			cursorTelemetry.length,
 			handleGenerateAutoCaptions,
+			webcam,
+			duration,
 		],
 	);
 
@@ -4746,7 +4887,7 @@ export default function VideoEditor() {
 						padding,
 						videoPadding: padding,
 						cropRegion,
-						webcam,
+						webcam: webcamWithLayout,
 						webcamUrl:
 							resolvedWebcamVideoUrl ??
 							(webcam.sourcePath ? toFileUrl(webcam.sourcePath) : null),
@@ -4929,7 +5070,7 @@ export default function VideoEditor() {
 						borderRadius,
 						padding,
 						cropRegion,
-						webcam,
+						webcam: webcamWithLayout,
 						webcamUrl:
 							resolvedWebcamVideoUrl ??
 							(webcam.sourcePath ? toFileUrl(webcam.sourcePath) : null),
@@ -5681,7 +5822,7 @@ export default function VideoEditor() {
 			padding={padding}
 			frame={frame}
 			cropRegion={cropRegion}
-			webcam={webcam}
+			webcam={webcamWithLayout}
 			webcamVideoPath={webcam.sourcePath ? resolvedWebcamVideoUrl : null}
 			trimRegions={trimRegions}
 			speedRegions={effectiveSpeedRegions}
@@ -5719,10 +5860,7 @@ export default function VideoEditor() {
 			volume={
 				audio.shouldMutePreviewVideo || audio.isCurrentClipMuted
 					? 0
-					: Math.max(
-							0,
-							Math.min(1, previewVolume * audio.embeddedSourcePreviewGain),
-						)
+					: Math.max(0, Math.min(1, previewVolume * audio.embeddedSourcePreviewGain))
 			}
 			suspendRendering={suspendRendering}
 		/>
@@ -5785,7 +5923,7 @@ export default function VideoEditor() {
 					<DialogDescription className="text-muted-foreground">
 						{t(
 							"editor.discardConfirm.description",
-							'This export is still rendering. Discarding now throws away the work in progress. Type {{phrase}} to confirm.',
+							"This export is still rendering. Discarding now throws away the work in progress. Type {{phrase}} to confirm.",
 							{ phrase: DISCARD_CONFIRM_PHRASE },
 						)}
 					</DialogDescription>
@@ -5801,9 +5939,13 @@ export default function VideoEditor() {
 						}
 					}}
 					placeholder={DISCARD_CONFIRM_PHRASE}
-					aria-label={t("editor.discardConfirm.inputLabel", "Type {{phrase}} to confirm", {
-						phrase: DISCARD_CONFIRM_PHRASE,
-					})}
+					aria-label={t(
+						"editor.discardConfirm.inputLabel",
+						"Type {{phrase}} to confirm",
+						{
+							phrase: DISCARD_CONFIRM_PHRASE,
+						},
+					)}
 					className="bg-editor-surface text-foreground"
 				/>
 				<DialogFooter>
@@ -5869,11 +6011,7 @@ export default function VideoEditor() {
 	}
 
 	const exportMenu = (
-		<DropdownMenu
-			open={showExportDropdown}
-			onOpenChange={setShowExportDropdown}
-			modal={false}
-		>
+		<DropdownMenu open={showExportDropdown} onOpenChange={setShowExportDropdown} modal={false}>
 			<DropdownMenuTrigger asChild>
 				<Button
 					type="button"
@@ -5900,10 +6038,7 @@ export default function VideoEditor() {
 									{t("editor.exportStatus.exporting", "Exporting")}
 								</p>
 								<p className="text-xs text-muted-foreground">
-									{t(
-										"editor.exportStatus.renderingFile",
-										"Rendering your file.",
-									)}
+									{t("editor.exportStatus.renderingFile", "Rendering your file.")}
 								</p>
 								{isLightningExportInProgress ? (
 									<p className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground/70">
@@ -5921,8 +6056,7 @@ export default function VideoEditor() {
 								) : null}
 								{isLegacyExportInProgress ? (
 									<p className="mt-1 text-[11px] text-muted-foreground/70">
-										Export too slow? Cancel and try Lightning
-										export!
+										Export too slow? Cancel and try Lightning export!
 									</p>
 								) : null}
 							</div>
@@ -5949,9 +6083,7 @@ export default function VideoEditor() {
 								/>
 							)}
 						</div>
-						<p className="mt-2 text-xs text-muted-foreground">
-							{exportPercentLabel}
-						</p>
+						<p className="mt-2 text-xs text-muted-foreground">{exportPercentLabel}</p>
 						{isRenderingAudio ? (
 							<p className="mt-1 text-[11px] text-muted-foreground/70">
 								{t(
@@ -6058,9 +6190,7 @@ export default function VideoEditor() {
 						experimentalNvidiaCudaExport={
 							experimentalNvidiaCudaExport && nvidiaCudaExportAvailable
 						}
-						onExperimentalNvidiaCudaExportChange={
-							setExperimentalNvidiaCudaExport
-						}
+						onExperimentalNvidiaCudaExportChange={setExperimentalNvidiaCudaExport}
 						nvidiaCudaExportAvailable={nvidiaCudaExportAvailable}
 						exportQuality={exportQuality}
 						onExportQualityChange={setExportQuality}
@@ -6481,9 +6611,7 @@ export default function VideoEditor() {
 									type="button"
 									className="text-muted-foreground transition-colors hover:text-foreground"
 									title={t("editor.playback.muteUnmute")}
-									onClick={() =>
-										setPreviewVolume(previewVolume <= 0.001 ? 1 : 0)
-									}
+									onClick={() => setPreviewVolume(previewVolume <= 0.001 ? 1 : 0)}
 								>
 									{previewVolume <= 0.001 ? (
 										<VolumeX className="w-3.5 h-3.5" />
@@ -6516,9 +6644,7 @@ export default function VideoEditor() {
 										max="1"
 										step="0.01"
 										value={previewVolume}
-										onChange={(e) =>
-											setPreviewVolume(Number(e.target.value))
-										}
+										onChange={(e) => setPreviewVolume(Number(e.target.value))}
 										className="absolute inset-0 h-full w-full cursor-ew-resize opacity-0"
 									/>
 								</div>
@@ -6545,416 +6671,435 @@ export default function VideoEditor() {
 								} as React.CSSProperties)
 					}
 				>
-				{isInspectorOverlay ? (
-					<div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-foreground/10 px-3 pt-[max(env(safe-area-inset-top),0.75rem)] pb-2">
-						<span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-							{t("settings.sections.title", "Inspector")}
-						</span>
-						<Button
-							type="button"
-							variant="ghost"
-							size="icon"
-							onClick={() => setInspectorOverlayOpen(false)}
-							className="h-7 w-7 rounded-lg text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
-							title={t("common.actions.close", "Close")}
-							aria-label={t("common.actions.close", "Close")}
-						>
-							<X className="h-4 w-4" />
-						</Button>
-					</div>
-				) : null}
-				<div className="flex min-h-0 flex-1 flex-col">
-				{activeEffectSection === "account" ? (
-					<div className="flex h-full min-h-0 flex-col">
-						<div className="flex-shrink-0 border-b border-foreground/10">
-							<div
-								role="tablist"
-								aria-label={t("settings.sections.title", "Inspector")}
-								className="custom-scrollbar flex items-stretch gap-1 overflow-x-auto px-2 pt-2"
+					{isInspectorOverlay ? (
+						<div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-foreground/10 px-3 pt-[max(env(safe-area-inset-top),0.75rem)] pb-2">
+							<span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+								{t("settings.sections.title", "Inspector")}
+							</span>
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon"
+								onClick={() => setInspectorOverlayOpen(false)}
+								className="h-7 w-7 rounded-lg text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+								title={t("common.actions.close", "Close")}
+								aria-label={t("common.actions.close", "Close")}
 							>
-								{inspectorTabs.map((tab) => {
-									const isActive = activeEffectSection === tab.id;
-									return (
-										<button
-											key={tab.id}
-											type="button"
-											role="tab"
-											aria-selected={isActive}
-											title={tab.label}
-											onClick={() =>
-												setActiveEffectSection(
-													tab.id as EditorEffectSection,
-												)
-											}
-											className={cn(
-												"group relative flex flex-shrink-0 flex-col items-center gap-1 px-2.5 pb-2 pt-1 outline-none transition-colors duration-150 focus:outline-none focus-visible:outline-none",
-												isActive
-													? "text-foreground"
-													: "text-muted-foreground hover:text-foreground",
-											)}
-										>
-											<span className="flex h-5 w-5 items-center justify-center">
-												{tab.icon}
-											</span>
-											<span className="max-w-full truncate text-[10px] font-medium uppercase tracking-[0.08em]">
-												{tab.label}
-											</span>
-											{isActive ? (
-												<span className="absolute inset-x-1.5 bottom-0 h-0.5 rounded-full bg-[var(--brand-accent)]" />
-											) : null}
-										</button>
-									);
-								})}
-							</div>
+								<X className="h-4 w-4" />
+							</Button>
 						</div>
-						<div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar p-4">
-							{/* BYOK key entry is primary and needs no account. */}
-							<AgentSettingsProvider>
-								<AgentKeyPanel />
-							</AgentSettingsProvider>
-
-							{/* Cloud sync is strictly optional, demoted below the keys. */}
-							<div className="mt-4 border-t border-foreground/10 pt-3">
-								<button
-									type="button"
-									onClick={() => setShowCloudSync((prev) => !prev)}
-									className="flex w-full items-center justify-between gap-2 text-left"
-								>
-									<span className="flex flex-col">
-										<span className="text-sm font-medium text-foreground">
-											Sync across devices
-										</span>
-										<span className="text-[11px] text-muted-foreground">
-											Optional — back up keys, presets & settings to Glasscast
-											Cloud
-										</span>
-									</span>
-									<ChevronDown
-										className={cn(
-											"h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform",
-											showCloudSync ? "rotate-180" : "",
-										)}
-									/>
-								</button>
-								{showCloudSync ? (
-									<div className="mt-3">
-										<AccountPanel embedded />
+					) : null}
+					<div className="flex min-h-0 flex-1 flex-col">
+						{activeEffectSection === "account" ? (
+							<div className="flex h-full min-h-0 flex-col">
+								<div className="flex-shrink-0 border-b border-foreground/10">
+									<div
+										role="tablist"
+										aria-label={t("settings.sections.title", "Inspector")}
+										className="custom-scrollbar flex items-stretch gap-1 overflow-x-auto px-2 pt-2"
+									>
+										{inspectorTabs.map((tab) => {
+											const isActive = activeEffectSection === tab.id;
+											return (
+												<button
+													key={tab.id}
+													type="button"
+													role="tab"
+													aria-selected={isActive}
+													title={tab.label}
+													onClick={() =>
+														setActiveEffectSection(
+															tab.id as EditorEffectSection,
+														)
+													}
+													className={cn(
+														"group relative flex flex-shrink-0 flex-col items-center gap-1 px-2.5 pb-2 pt-1 outline-none transition-colors duration-150 focus:outline-none focus-visible:outline-none",
+														isActive
+															? "text-foreground"
+															: "text-muted-foreground hover:text-foreground",
+													)}
+												>
+													<span className="flex h-5 w-5 items-center justify-center">
+														{tab.icon}
+													</span>
+													<span className="max-w-full truncate text-[10px] font-medium uppercase tracking-[0.08em]">
+														{tab.label}
+													</span>
+													{isActive ? (
+														<span className="absolute inset-x-1.5 bottom-0 h-0.5 rounded-full bg-[var(--brand-accent)]" />
+													) : null}
+												</button>
+											);
+										})}
 									</div>
-								) : null}
-							</div>
-						</div>
-					</div>
-				) : activeEffectSection === "extensions" ? (
-					<div className="flex h-full min-h-0 flex-col">
-						<div className="flex-shrink-0 border-b border-foreground/10">
-							<div
-								role="tablist"
-								aria-label={t("settings.sections.title", "Inspector")}
-								className="custom-scrollbar flex items-stretch gap-1 overflow-x-auto px-2 pt-2"
-							>
-								{inspectorTabs.map((tab) => {
-									const isActive = activeEffectSection === tab.id;
-									return (
-										<button
-											key={tab.id}
-											type="button"
-											role="tab"
-											aria-selected={isActive}
-											title={tab.label}
-											onClick={() =>
-												setActiveEffectSection(
-													tab.id as EditorEffectSection,
-												)
-											}
-											className={cn(
-												"group relative flex flex-shrink-0 flex-col items-center gap-1 px-2.5 pb-2 pt-1 outline-none transition-colors duration-150 focus:outline-none focus-visible:outline-none",
-												isActive
-													? "text-foreground"
-													: "text-muted-foreground hover:text-foreground",
-											)}
-										>
-											<span className="flex h-5 w-5 items-center justify-center">
-												{tab.icon}
-											</span>
-											<span className="max-w-full truncate text-[10px] font-medium uppercase tracking-[0.08em]">
-												{tab.label}
-											</span>
-											{isActive ? (
-												<span className="absolute inset-x-1.5 bottom-0 h-0.5 rounded-full bg-[var(--brand-accent)]" />
-											) : null}
-										</button>
-									);
-								})}
-							</div>
-						</div>
-						<div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar">
-							<ExtensionManager />
-						</div>
-					</div>
-				) : (
-					<AgentSettingsProvider>
-					<SettingsPanel
-						panelMode="editor"
-						inspectorTabs={inspectorTabs}
-						activeTab={activeEffectSection}
-						onTabChange={(id) =>
-							setActiveEffectSection(id as EditorEffectSection)
-						}
-						activeEffectSection={activeEffectSection}
-						selected={wallpaper}
-						onWallpaperChange={setWallpaper}
-						selectedZoomDepth={
-							selectedZoomId
-								? zoomRegions.find((z) => z.id === selectedZoomId)?.depth
-								: null
-						}
-						onZoomDepthChange={(depth) =>
-							selectedZoomId && handleZoomDepthChange(depth)
-						}
-						selectedZoomId={selectedZoomId}
-						selectedZoomMode={
-							selectedZoomId
-								? (zoomRegions.find((z) => z.id === selectedZoomId)?.mode ??
-									"auto")
-								: null
-						}
-						onZoomModeChange={(mode) =>
-							selectedZoomId && handleZoomModeChange(mode)
-						}
-						selectedZoomStyle={
-							selectedZoomId
-								? (zoomRegions.find((z) => z.id === selectedZoomId)?.style ??
-									"flat")
-								: null
-						}
-						onZoomStyleChange={(style) =>
-							selectedZoomId && handleZoomStyleChange(style)
-						}
-						selectedZoomIntensity={
-							selectedZoomId
-								? (zoomRegions.find((z) => z.id === selectedZoomId)
-										?.intensity ?? null)
-								: null
-						}
-						onZoomIntensityChange={(intensity) =>
-							selectedZoomId && handleZoomIntensityChange(intensity)
-						}
-						soundEffectsEnabled={soundEffectsEnabled}
-						onSoundEffectsEnabledChange={handleSoundEffectsEnabledChange}
-						soundEffectsVolume={soundEffectsVolume}
-						onSoundEffectsVolumeChange={handleSoundEffectsVolumeChange}
-						keyboardSoundPreset={keyboardSoundPreset}
-						onKeyboardSoundPresetChange={handleKeyboardSoundPresetChange}
-						mouseSoundPreset={mouseSoundPreset}
-						onMouseSoundPresetChange={handleMouseSoundPresetChange}
-						agentExecuteTool={agentExecuteTool}
-						agentGetProjectSummary={agentGetProjectSummary}
-						onZoomDelete={handleZoomDelete}
-						selectedClipId={selectedClipId}
-						selectedClipSpeed={
-							selectedClipId
-								? (clipRegions.find((c) => c.id === selectedClipId)
-										?.speed ?? 1)
-								: null
-						}
-						selectedClipMuted={
-							selectedClipId
-								? (clipRegions.find((c) => c.id === selectedClipId)
-										?.muted ?? false)
-								: null
-						}
-						selectedClipShowSourceAudio={
-							selectedClipId
-								? (clipRegions.find((c) => c.id === selectedClipId)
-										?.showSourceAudio ?? false)
-								: null
-						}
-						onClipSpeedChange={handleClipSpeedChange}
-						onClipMutedChange={handleClipMutedChange}
-						onClipShowSourceAudioChange={handleClipShowSourceAudioChange}
-						onClipDelete={handleClipDelete}
-						hasClipSourceAudio={hasClipSourceAudio}
-						sourceAudioTrackMeta={audio.sourceAudioTrackMeta}
-						sourceAudioTrackSettings={
-							audio.selectedClipSourceAudioTrackSettings
-						}
-						onSourceAudioTrackVolumeChange={
-							audio.onSelectedClipSourceAudioTrackVolumeChange
-						}
-						onSourceAudioTrackNormalizeChange={
-							audio.onSelectedClipSourceAudioTrackNormalizeChange
-						}
-						selectedAudioId={selectedAudioId}
-						selectedAudioVolume={
-							selectedAudioId
-								? (audioRegions.find((r) => r.id === selectedAudioId)
-										?.volume ?? null)
-								: null
-						}
-						selectedAudioNormalize={
-							selectedAudioId
-								? (audioRegions.find((r) => r.id === selectedAudioId)
-										?.normalize ?? false)
-								: null
-						}
-						onAudioVolumeChange={handleAudioVolumeChange}
-						onAudioNormalizeChange={handleAudioNormalizeChange}
-						onAudioDelete={handleAudioDelete}
-						shadowIntensity={shadowIntensity}
-						onShadowChange={setShadowIntensity}
-						backgroundBlur={backgroundBlur}
-						onBackgroundBlurChange={setBackgroundBlur}
-						zoomMotionBlurTuning={zoomMotionBlurTuning}
-						onZoomMotionBlurTuningChange={setZoomMotionBlurTuning}
-						zoomTemporalMotionBlur={zoomTemporalMotionBlur}
-						onZoomTemporalMotionBlurChange={setZoomTemporalMotionBlur}
-						zoomMotionBlurSampleCount={zoomMotionBlurSampleCount}
-						onZoomMotionBlurSampleCountChange={setZoomMotionBlurSampleCount}
-						zoomMotionBlurShutterFraction={zoomMotionBlurShutterFraction}
-						onZoomMotionBlurShutterFractionChange={
-							setZoomMotionBlurShutterFraction
-						}
-						autoApplyFreshRecordingAutoZooms={autoApplyFreshRecordingAutoZooms}
-						onAutoApplyFreshRecordingAutoZoomsChange={
-							setAutoApplyFreshRecordingAutoZooms
-						}
-						connectZooms={connectZooms}
-						onConnectZoomsChange={setConnectZooms}
-						zoomInDurationMs={zoomInDurationMs}
-						onZoomInDurationMsChange={setZoomInDurationMs}
-						zoomInOverlapMs={zoomInOverlapMs}
-						onZoomInOverlapMsChange={setZoomInOverlapMs}
-						zoomOutDurationMs={zoomOutDurationMs}
-						onZoomOutDurationMsChange={setZoomOutDurationMs}
-						connectedZoomGapMs={connectedZoomGapMs}
-						onConnectedZoomGapMsChange={setConnectedZoomGapMs}
-						connectedZoomDurationMs={connectedZoomDurationMs}
-						onConnectedZoomDurationMsChange={setConnectedZoomDurationMs}
-						zoomInEasing={zoomInEasing}
-						onZoomInEasingChange={setZoomInEasing}
-						zoomOutEasing={zoomOutEasing}
-						onZoomOutEasingChange={setZoomOutEasing}
-						connectedZoomEasing={connectedZoomEasing}
-						onConnectedZoomEasingChange={setConnectedZoomEasing}
-						showCursor={effectiveShowCursor}
-						onShowCursorChange={handleShowCursorChange}
-						loopCursor={loopCursor}
-						onLoopCursorChange={setLoopCursor}
-						cursorStyle={cursorStyle}
-						onCursorStyleChange={setCursorStyle}
-						cursorSize={cursorSize}
-						onCursorSizeChange={setCursorSize}
-						cursorSmoothing={cursorSmoothing}
-						onCursorSmoothingChange={setCursorSmoothing}
-						cursorSpringStiffnessMultiplier={cursorSpringStiffnessMultiplier}
-						onCursorSpringStiffnessMultiplierChange={
-							setCursorSpringStiffnessMultiplier
-						}
-						cursorSpringDampingMultiplier={cursorSpringDampingMultiplier}
-						onCursorSpringDampingMultiplierChange={
-							setCursorSpringDampingMultiplier
-						}
-						cursorSpringMassMultiplier={cursorSpringMassMultiplier}
-						onCursorSpringMassMultiplierChange={setCursorSpringMassMultiplier}
-						cameraSpringStiffnessMultiplier={cameraSpringStiffnessMultiplier}
-						onCameraSpringStiffnessMultiplierChange={
-							setCameraSpringStiffnessMultiplier
-						}
-						cameraSpringDampingMultiplier={cameraSpringDampingMultiplier}
-						onCameraSpringDampingMultiplierChange={
-							setCameraSpringDampingMultiplier
-						}
-						cameraSpringMassMultiplier={cameraSpringMassMultiplier}
-						onCameraSpringMassMultiplierChange={setCameraSpringMassMultiplier}
-						zoomClassicMode={zoomClassicMode}
-						onZoomClassicModeChange={setZoomClassicMode}
-						cursorMotionBlur={cursorMotionBlur}
-						onCursorMotionBlurChange={setCursorMotionBlur}
-						cursorClickEffect={cursorClickEffect}
-						cursorClickEffectColor={cursorClickEffectColor}
-						onCursorClickEffectChange={setCursorClickEffect}
-						onCursorClickEffectColorChange={setCursorClickEffectColor}
-						cursorClickEffectScale={cursorClickEffectScale}
-						onCursorClickEffectScaleChange={setCursorClickEffectScale}
-						cursorClickEffectOpacity={cursorClickEffectOpacity}
-						onCursorClickEffectOpacityChange={setCursorClickEffectOpacity}
-						cursorClickEffectDurationMs={cursorClickEffectDurationMs}
-						onCursorClickEffectDurationMsChange={setCursorClickEffectDurationMs}
-						cursorClickBounce={cursorClickBounce}
-						onCursorClickBounceChange={setCursorClickBounce}
-						cursorClickBounceDuration={cursorClickBounceDuration}
-						onCursorClickBounceDurationChange={setCursorClickBounceDuration}
-						cursorSway={cursorSway}
-						onCursorSwayChange={setCursorSway}
-						borderRadius={borderRadius}
-						onBorderRadiusChange={setBorderRadius}
-						webcam={webcam}
-						webcamPreviewSrc={webcam.sourcePath ? resolvedWebcamVideoUrl : null}
-						webcamPreviewCurrentTime={currentTime}
-						webcamPreviewPlaying={isPlaying}
-						onWebcamChange={setWebcam}
-						onUploadWebcam={handleUploadWebcam}
-						onClearWebcam={handleClearWebcam}
-						padding={padding}
-						onPaddingChange={setPadding}
-						frame={frame}
-						onFrameChange={setFrame}
-						cropRegion={cropRegion}
-						onCropChange={setCropRegion}
-						aspectRatio={aspectRatio}
-						onAspectRatioChange={setAspectRatio}
-						selectedAnnotationId={selectedAnnotationId}
-						annotationRegions={annotationRegions}
-						autoCaptions={autoCaptions}
-						onAutoCaptionsChange={setAutoCaptions}
-						onCaptionCueSeek={(ms) =>
-							handleSeek(mapSourceTimeToTimelineTime(ms) / 1000, { pause: true })
-						}
-						autoCaptionSettings={autoCaptionSettings}
-						whisperExecutablePath={whisperExecutablePath}
-						whisperModelPath={whisperModelPath}
-						whisperModels={whisperModels}
-						isGeneratingCaptions={isGeneratingCaptions}
-						onAutoCaptionSettingsChange={setAutoCaptionSettings}
-						onPickWhisperExecutable={handlePickWhisperExecutable}
-						onPickWhisperModel={handlePickWhisperModel}
-						onGenerateAutoCaptions={handleGenerateAutoCaptions}
-						onClearAutoCaptions={handleClearAutoCaptions}
-						onDownloadWhisperModel={handleDownloadWhisperModel}
-						onDeleteWhisperModel={handleDeleteWhisperModel}
-						selectedCaptionProvider={selectedCaptionProvider}
-						onSelectedCaptionProviderChange={setSelectedCaptionProvider}
-						selectedCaptionModelId={selectedCaptionModelId}
-						onSelectedCaptionModelIdChange={setSelectedCaptionModelId}
-						captionKeyStatuses={captionKeyStatuses}
-						onSaveCaptionKey={handleSaveCaptionKey}
-						onDeleteCaptionKey={handleDeleteCaptionKey}
-						nativeCaptureUnavailableSession={sessionNativeCaptureUnavailable}
-						onOpenNativeCaptureUnavailableModal={() =>
-							setNativeCaptureUnavailableModalOpen(true)
-						}
-						onAnnotationContentChange={handleAnnotationContentChange}
-						onAnnotationTypeChange={handleAnnotationTypeChange}
-						onAnnotationStyleChange={handleAnnotationStyleChange}
-						onAnnotationFigureDataChange={handleAnnotationFigureDataChange}
-						onAnnotationBlurIntensityChange={
-							handleAnnotationBlurIntensityChange
-						}
-						onAnnotationBlurColorChange={handleAnnotationBlurColorChange}
-						onAnnotationDelete={handleAnnotationDelete}
-					/>
-					</AgentSettingsProvider>
-				)}
-				</div>
-				{/* ── /inspector scroll body ── */}
+								</div>
+								<div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar p-4">
+									{/* BYOK key entry is primary and needs no account. */}
+									<AgentSettingsProvider>
+										<AgentKeyPanel />
+									</AgentSettingsProvider>
 
-				{/* Export pill — sticky footer of the inspector column */}
-				<div
-					className="flex-shrink-0 border-t border-foreground/10 bg-editor-panel/80 p-2.5"
-					style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-				>
-					{exportMenu}
-				</div>
+									{/* Cloud sync is strictly optional, demoted below the keys. */}
+									<div className="mt-4 border-t border-foreground/10 pt-3">
+										<button
+											type="button"
+											onClick={() => setShowCloudSync((prev) => !prev)}
+											className="flex w-full items-center justify-between gap-2 text-left"
+										>
+											<span className="flex flex-col">
+												<span className="text-sm font-medium text-foreground">
+													Sync across devices
+												</span>
+												<span className="text-[11px] text-muted-foreground">
+													Optional — back up keys, presets & settings to
+													Glasscast Cloud
+												</span>
+											</span>
+											<ChevronDown
+												className={cn(
+													"h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform",
+													showCloudSync ? "rotate-180" : "",
+												)}
+											/>
+										</button>
+										{showCloudSync ? (
+											<div className="mt-3">
+												<AccountPanel embedded />
+											</div>
+										) : null}
+									</div>
+								</div>
+							</div>
+						) : activeEffectSection === "extensions" ? (
+							<div className="flex h-full min-h-0 flex-col">
+								<div className="flex-shrink-0 border-b border-foreground/10">
+									<div
+										role="tablist"
+										aria-label={t("settings.sections.title", "Inspector")}
+										className="custom-scrollbar flex items-stretch gap-1 overflow-x-auto px-2 pt-2"
+									>
+										{inspectorTabs.map((tab) => {
+											const isActive = activeEffectSection === tab.id;
+											return (
+												<button
+													key={tab.id}
+													type="button"
+													role="tab"
+													aria-selected={isActive}
+													title={tab.label}
+													onClick={() =>
+														setActiveEffectSection(
+															tab.id as EditorEffectSection,
+														)
+													}
+													className={cn(
+														"group relative flex flex-shrink-0 flex-col items-center gap-1 px-2.5 pb-2 pt-1 outline-none transition-colors duration-150 focus:outline-none focus-visible:outline-none",
+														isActive
+															? "text-foreground"
+															: "text-muted-foreground hover:text-foreground",
+													)}
+												>
+													<span className="flex h-5 w-5 items-center justify-center">
+														{tab.icon}
+													</span>
+													<span className="max-w-full truncate text-[10px] font-medium uppercase tracking-[0.08em]">
+														{tab.label}
+													</span>
+													{isActive ? (
+														<span className="absolute inset-x-1.5 bottom-0 h-0.5 rounded-full bg-[var(--brand-accent)]" />
+													) : null}
+												</button>
+											);
+										})}
+									</div>
+								</div>
+								<div className="min-h-0 flex-1 overflow-y-auto custom-scrollbar">
+									<ExtensionManager />
+								</div>
+							</div>
+						) : (
+							<AgentSettingsProvider>
+								<SettingsPanel
+									panelMode="editor"
+									inspectorTabs={inspectorTabs}
+									activeTab={activeEffectSection}
+									onTabChange={(id) =>
+										setActiveEffectSection(id as EditorEffectSection)
+									}
+									activeEffectSection={activeEffectSection}
+									selected={wallpaper}
+									onWallpaperChange={setWallpaper}
+									selectedZoomDepth={
+										selectedZoomId
+											? zoomRegions.find((z) => z.id === selectedZoomId)
+													?.depth
+											: null
+									}
+									onZoomDepthChange={(depth) =>
+										selectedZoomId && handleZoomDepthChange(depth)
+									}
+									selectedZoomId={selectedZoomId}
+									selectedZoomMode={
+										selectedZoomId
+											? (zoomRegions.find((z) => z.id === selectedZoomId)
+													?.mode ?? "auto")
+											: null
+									}
+									onZoomModeChange={(mode) =>
+										selectedZoomId && handleZoomModeChange(mode)
+									}
+									selectedZoomStyle={
+										selectedZoomId
+											? (zoomRegions.find((z) => z.id === selectedZoomId)
+													?.style ?? "flat")
+											: null
+									}
+									onZoomStyleChange={(style) =>
+										selectedZoomId && handleZoomStyleChange(style)
+									}
+									selectedZoomIntensity={
+										selectedZoomId
+											? (zoomRegions.find((z) => z.id === selectedZoomId)
+													?.intensity ?? null)
+											: null
+									}
+									onZoomIntensityChange={(intensity) =>
+										selectedZoomId && handleZoomIntensityChange(intensity)
+									}
+									soundEffectsEnabled={soundEffectsEnabled}
+									onSoundEffectsEnabledChange={handleSoundEffectsEnabledChange}
+									soundEffectsVolume={soundEffectsVolume}
+									onSoundEffectsVolumeChange={handleSoundEffectsVolumeChange}
+									keyboardSoundPreset={keyboardSoundPreset}
+									onKeyboardSoundPresetChange={handleKeyboardSoundPresetChange}
+									mouseSoundPreset={mouseSoundPreset}
+									onMouseSoundPresetChange={handleMouseSoundPresetChange}
+									agentExecuteTool={agentExecuteTool}
+									agentGetProjectSummary={agentGetProjectSummary}
+									onZoomDelete={handleZoomDelete}
+									selectedClipId={selectedClipId}
+									selectedClipSpeed={
+										selectedClipId
+											? (clipRegions.find((c) => c.id === selectedClipId)
+													?.speed ?? 1)
+											: null
+									}
+									selectedClipMuted={
+										selectedClipId
+											? (clipRegions.find((c) => c.id === selectedClipId)
+													?.muted ?? false)
+											: null
+									}
+									selectedClipShowSourceAudio={
+										selectedClipId
+											? (clipRegions.find((c) => c.id === selectedClipId)
+													?.showSourceAudio ?? false)
+											: null
+									}
+									onClipSpeedChange={handleClipSpeedChange}
+									onClipMutedChange={handleClipMutedChange}
+									onClipShowSourceAudioChange={handleClipShowSourceAudioChange}
+									onClipDelete={handleClipDelete}
+									hasClipSourceAudio={hasClipSourceAudio}
+									sourceAudioTrackMeta={audio.sourceAudioTrackMeta}
+									sourceAudioTrackSettings={
+										audio.selectedClipSourceAudioTrackSettings
+									}
+									onSourceAudioTrackVolumeChange={
+										audio.onSelectedClipSourceAudioTrackVolumeChange
+									}
+									onSourceAudioTrackNormalizeChange={
+										audio.onSelectedClipSourceAudioTrackNormalizeChange
+									}
+									selectedAudioId={selectedAudioId}
+									selectedAudioVolume={
+										selectedAudioId
+											? (audioRegions.find((r) => r.id === selectedAudioId)
+													?.volume ?? null)
+											: null
+									}
+									selectedAudioNormalize={
+										selectedAudioId
+											? (audioRegions.find((r) => r.id === selectedAudioId)
+													?.normalize ?? false)
+											: null
+									}
+									onAudioVolumeChange={handleAudioVolumeChange}
+									onAudioNormalizeChange={handleAudioNormalizeChange}
+									onAudioDelete={handleAudioDelete}
+									shadowIntensity={shadowIntensity}
+									onShadowChange={setShadowIntensity}
+									backgroundBlur={backgroundBlur}
+									onBackgroundBlurChange={setBackgroundBlur}
+									zoomMotionBlurTuning={zoomMotionBlurTuning}
+									onZoomMotionBlurTuningChange={setZoomMotionBlurTuning}
+									zoomTemporalMotionBlur={zoomTemporalMotionBlur}
+									onZoomTemporalMotionBlurChange={setZoomTemporalMotionBlur}
+									zoomMotionBlurSampleCount={zoomMotionBlurSampleCount}
+									onZoomMotionBlurSampleCountChange={setZoomMotionBlurSampleCount}
+									zoomMotionBlurShutterFraction={zoomMotionBlurShutterFraction}
+									onZoomMotionBlurShutterFractionChange={
+										setZoomMotionBlurShutterFraction
+									}
+									autoApplyFreshRecordingAutoZooms={
+										autoApplyFreshRecordingAutoZooms
+									}
+									onAutoApplyFreshRecordingAutoZoomsChange={
+										setAutoApplyFreshRecordingAutoZooms
+									}
+									connectZooms={connectZooms}
+									onConnectZoomsChange={setConnectZooms}
+									zoomInDurationMs={zoomInDurationMs}
+									onZoomInDurationMsChange={setZoomInDurationMs}
+									zoomInOverlapMs={zoomInOverlapMs}
+									onZoomInOverlapMsChange={setZoomInOverlapMs}
+									zoomOutDurationMs={zoomOutDurationMs}
+									onZoomOutDurationMsChange={setZoomOutDurationMs}
+									connectedZoomGapMs={connectedZoomGapMs}
+									onConnectedZoomGapMsChange={setConnectedZoomGapMs}
+									connectedZoomDurationMs={connectedZoomDurationMs}
+									onConnectedZoomDurationMsChange={setConnectedZoomDurationMs}
+									zoomInEasing={zoomInEasing}
+									onZoomInEasingChange={setZoomInEasing}
+									zoomOutEasing={zoomOutEasing}
+									onZoomOutEasingChange={setZoomOutEasing}
+									connectedZoomEasing={connectedZoomEasing}
+									onConnectedZoomEasingChange={setConnectedZoomEasing}
+									showCursor={effectiveShowCursor}
+									onShowCursorChange={handleShowCursorChange}
+									loopCursor={loopCursor}
+									onLoopCursorChange={setLoopCursor}
+									cursorStyle={cursorStyle}
+									onCursorStyleChange={setCursorStyle}
+									cursorSize={cursorSize}
+									onCursorSizeChange={setCursorSize}
+									cursorSmoothing={cursorSmoothing}
+									onCursorSmoothingChange={setCursorSmoothing}
+									cursorSpringStiffnessMultiplier={
+										cursorSpringStiffnessMultiplier
+									}
+									onCursorSpringStiffnessMultiplierChange={
+										setCursorSpringStiffnessMultiplier
+									}
+									cursorSpringDampingMultiplier={cursorSpringDampingMultiplier}
+									onCursorSpringDampingMultiplierChange={
+										setCursorSpringDampingMultiplier
+									}
+									cursorSpringMassMultiplier={cursorSpringMassMultiplier}
+									onCursorSpringMassMultiplierChange={
+										setCursorSpringMassMultiplier
+									}
+									cameraSpringStiffnessMultiplier={
+										cameraSpringStiffnessMultiplier
+									}
+									onCameraSpringStiffnessMultiplierChange={
+										setCameraSpringStiffnessMultiplier
+									}
+									cameraSpringDampingMultiplier={cameraSpringDampingMultiplier}
+									onCameraSpringDampingMultiplierChange={
+										setCameraSpringDampingMultiplier
+									}
+									cameraSpringMassMultiplier={cameraSpringMassMultiplier}
+									onCameraSpringMassMultiplierChange={
+										setCameraSpringMassMultiplier
+									}
+									zoomClassicMode={zoomClassicMode}
+									onZoomClassicModeChange={setZoomClassicMode}
+									cursorMotionBlur={cursorMotionBlur}
+									onCursorMotionBlurChange={setCursorMotionBlur}
+									cursorClickEffect={cursorClickEffect}
+									cursorClickEffectColor={cursorClickEffectColor}
+									onCursorClickEffectChange={setCursorClickEffect}
+									onCursorClickEffectColorChange={setCursorClickEffectColor}
+									cursorClickEffectScale={cursorClickEffectScale}
+									onCursorClickEffectScaleChange={setCursorClickEffectScale}
+									cursorClickEffectOpacity={cursorClickEffectOpacity}
+									onCursorClickEffectOpacityChange={setCursorClickEffectOpacity}
+									cursorClickEffectDurationMs={cursorClickEffectDurationMs}
+									onCursorClickEffectDurationMsChange={
+										setCursorClickEffectDurationMs
+									}
+									cursorClickBounce={cursorClickBounce}
+									onCursorClickBounceChange={setCursorClickBounce}
+									cursorClickBounceDuration={cursorClickBounceDuration}
+									onCursorClickBounceDurationChange={setCursorClickBounceDuration}
+									cursorSway={cursorSway}
+									onCursorSwayChange={setCursorSway}
+									borderRadius={borderRadius}
+									onBorderRadiusChange={setBorderRadius}
+									webcam={webcamWithLayout}
+									webcamPreviewSrc={
+										webcam.sourcePath ? resolvedWebcamVideoUrl : null
+									}
+									webcamPreviewCurrentTime={currentTime}
+									webcamPreviewPlaying={isPlaying}
+									onWebcamChange={setWebcam}
+									onUploadWebcam={handleUploadWebcam}
+									onClearWebcam={handleClearWebcam}
+									padding={padding}
+									onPaddingChange={setPadding}
+									frame={frame}
+									onFrameChange={setFrame}
+									cropRegion={cropRegion}
+									onCropChange={setCropRegion}
+									aspectRatio={aspectRatio}
+									onAspectRatioChange={setAspectRatio}
+									selectedAnnotationId={selectedAnnotationId}
+									annotationRegions={annotationRegions}
+									autoCaptions={autoCaptions}
+									onAutoCaptionsChange={setAutoCaptions}
+									onCaptionCueSeek={(ms) =>
+										handleSeek(mapSourceTimeToTimelineTime(ms) / 1000, {
+											pause: true,
+										})
+									}
+									autoCaptionSettings={autoCaptionSettings}
+									whisperExecutablePath={whisperExecutablePath}
+									whisperModelPath={whisperModelPath}
+									whisperModels={whisperModels}
+									isGeneratingCaptions={isGeneratingCaptions}
+									onAutoCaptionSettingsChange={setAutoCaptionSettings}
+									onPickWhisperExecutable={handlePickWhisperExecutable}
+									onPickWhisperModel={handlePickWhisperModel}
+									onGenerateAutoCaptions={handleGenerateAutoCaptions}
+									onClearAutoCaptions={handleClearAutoCaptions}
+									onDownloadWhisperModel={handleDownloadWhisperModel}
+									onDeleteWhisperModel={handleDeleteWhisperModel}
+									selectedCaptionProvider={selectedCaptionProvider}
+									onSelectedCaptionProviderChange={setSelectedCaptionProvider}
+									selectedCaptionModelId={selectedCaptionModelId}
+									onSelectedCaptionModelIdChange={setSelectedCaptionModelId}
+									captionKeyStatuses={captionKeyStatuses}
+									onSaveCaptionKey={handleSaveCaptionKey}
+									onDeleteCaptionKey={handleDeleteCaptionKey}
+									nativeCaptureUnavailableSession={
+										sessionNativeCaptureUnavailable
+									}
+									onOpenNativeCaptureUnavailableModal={() =>
+										setNativeCaptureUnavailableModalOpen(true)
+									}
+									onAnnotationContentChange={handleAnnotationContentChange}
+									onAnnotationTypeChange={handleAnnotationTypeChange}
+									onAnnotationStyleChange={handleAnnotationStyleChange}
+									onAnnotationFigureDataChange={handleAnnotationFigureDataChange}
+									onAnnotationBlurIntensityChange={
+										handleAnnotationBlurIntensityChange
+									}
+									onAnnotationBlurColorChange={handleAnnotationBlurColorChange}
+									onAnnotationDelete={handleAnnotationDelete}
+								/>
+							</AgentSettingsProvider>
+						)}
+					</div>
+					{/* ── /inspector scroll body ── */}
+
+					{/* Export pill — sticky footer of the inspector column */}
+					<div
+						className="flex-shrink-0 border-t border-foreground/10 bg-editor-panel/80 p-2.5"
+						style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+					>
+						{exportMenu}
+					</div>
 				</div>
 				{/* ── /RIGHT INSPECTOR ── */}
 
@@ -6972,150 +7117,151 @@ export default function VideoEditor() {
 				{/* ── TIMELINE DOCK (r2c1) ─────────────────────────────────── */}
 				<div
 					className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-border bg-editor-timeline/95 p-2 backdrop-blur-md"
-					style={{
-						gridColumn: 1,
-						gridRow: 2,
-						height: "clamp(140px, 22vh, 220px)",
-						WebkitAppRegion: "no-drag",
-					} as React.CSSProperties}
+					style={
+						{
+							gridColumn: 1,
+							gridRow: 2,
+							height: "clamp(140px, 22vh, 220px)",
+							WebkitAppRegion: "no-drag",
+						} as React.CSSProperties
+					}
 				>
-				{/* Editing tools */}
-				<div className="mb-1.5 flex flex-shrink-0 items-center gap-1.5 px-1">
-					<DropdownMenu>
-						<DropdownMenuTrigger asChild>
-							<Button
-								variant="ghost"
-								size="sm"
-								className="h-7 gap-1 rounded-full border border-foreground/[0.08] bg-foreground/[0.04] px-2.5 text-[11px] text-foreground/65 shadow-[inset_0_1px_0_hsl(var(--foreground)/0.06)] transition-all hover:bg-foreground/[0.08] hover:text-foreground"
+					{/* Editing tools */}
+					<div className="mb-1.5 flex flex-shrink-0 items-center gap-1.5 px-1">
+						<DropdownMenu>
+							<DropdownMenuTrigger asChild>
+								<Button
+									variant="ghost"
+									size="sm"
+									className="h-7 gap-1 rounded-full border border-foreground/[0.08] bg-foreground/[0.04] px-2.5 text-[11px] text-foreground/65 shadow-[inset_0_1px_0_hsl(var(--foreground)/0.06)] transition-all hover:bg-foreground/[0.08] hover:text-foreground"
+								>
+									<Plus className="w-3.5 h-3.5" />
+									<span className="font-medium">
+										{t("editor.toolbar.addLayer")}
+									</span>
+									<ChevronDown className="w-3 h-3" />
+								</Button>
+							</DropdownMenuTrigger>
+							<DropdownMenuContent
+								align="start"
+								className="bg-editor-surface-alt border-foreground/10"
 							>
-								<Plus className="w-3.5 h-3.5" />
-								<span className="font-medium">
-									{t("editor.toolbar.addLayer")}
-								</span>
-								<ChevronDown className="w-3 h-3" />
-							</Button>
-						</DropdownMenuTrigger>
-						<DropdownMenuContent
-							align="start"
-							className="bg-editor-surface-alt border-foreground/10"
+								<DropdownMenuItem
+									onClick={() => {
+										const nextTrackIndex =
+											annotationRegions.length > 0
+												? Math.max(
+														...annotationRegions.map(
+															(r) => r.trackIndex ?? 0,
+														),
+													) + 1
+												: 0;
+										timelineRef.current?.addAnnotation(nextTrackIndex);
+									}}
+									className="text-muted-foreground hover:text-foreground hover:bg-foreground/10 cursor-pointer"
+								>
+									{t("timeline.annotation.label")}
+								</DropdownMenuItem>
+								<DropdownMenuItem
+									onClick={() => {
+										const nextTrackIndex =
+											audioRegions.length > 0
+												? Math.max(
+														...audioRegions.map(
+															(region) => region.trackIndex ?? 0,
+														),
+													) + 1
+												: 0;
+										timelineRef.current?.addAudio(nextTrackIndex);
+									}}
+									className="text-muted-foreground hover:text-foreground hover:bg-foreground/10 cursor-pointer"
+								>
+									{t("timeline.audio.label")}
+								</DropdownMenuItem>
+							</DropdownMenuContent>
+						</DropdownMenu>
+						<div className="w-[1px] h-4 bg-foreground/10 mx-1" />
+						<Button
+							onClick={() => timelineRef.current?.addZoom()}
+							variant="ghost"
+							size="icon"
+							className="h-7 w-7 rounded-full text-muted-foreground transition-all hover:bg-[var(--brand-accent)]/10 hover:text-[var(--brand-accent)]"
+							title={t("timeline.zoom.addZoom")}
 						>
-							<DropdownMenuItem
-								onClick={() => {
-									const nextTrackIndex =
-										annotationRegions.length > 0
-											? Math.max(
-													...annotationRegions.map(
-														(r) => r.trackIndex ?? 0,
-													),
-												) + 1
-											: 0;
-									timelineRef.current?.addAnnotation(nextTrackIndex);
-								}}
-								className="text-muted-foreground hover:text-foreground hover:bg-foreground/10 cursor-pointer"
-							>
-								{t("timeline.annotation.label")}
-							</DropdownMenuItem>
-							<DropdownMenuItem
-								onClick={() => {
-									const nextTrackIndex =
-										audioRegions.length > 0
-											? Math.max(
-													...audioRegions.map(
-														(region) =>
-															region.trackIndex ?? 0,
-													),
-												) + 1
-											: 0;
-									timelineRef.current?.addAudio(nextTrackIndex);
-								}}
-								className="text-muted-foreground hover:text-foreground hover:bg-foreground/10 cursor-pointer"
-							>
-								{t("timeline.audio.label")}
-							</DropdownMenuItem>
-						</DropdownMenuContent>
-					</DropdownMenu>
-					<div className="w-[1px] h-4 bg-foreground/10 mx-1" />
-					<Button
-						onClick={() => timelineRef.current?.addZoom()}
-						variant="ghost"
-						size="icon"
-						className="h-7 w-7 rounded-full text-muted-foreground transition-all hover:bg-[var(--brand-accent)]/10 hover:text-[var(--brand-accent)]"
-						title={t("timeline.zoom.addZoom")}
-					>
-						<ZoomIn className="w-4 h-4" />
-					</Button>
-					<Button
-						onClick={() => timelineRef.current?.suggestZooms()}
-						variant="ghost"
-						size="icon"
-						className="h-7 w-7 rounded-full text-muted-foreground transition-all hover:bg-[var(--brand-accent)]/10 hover:text-[var(--brand-accent)]"
-						title={t("timeline.zoom.suggestZooms")}
-					>
-						<WandSparkles className="w-4 h-4" />
-					</Button>
-					<Button
-						onClick={() => timelineRef.current?.splitClip()}
-						variant="ghost"
-						size="icon"
-						className="h-7 w-7 rounded-full text-muted-foreground transition-all hover:bg-foreground/10 hover:text-foreground"
-						title={t("editor.toolbar.splitClip")}
-					>
-						<Scissors className="w-4 h-4" />
-					</Button>
+							<ZoomIn className="w-4 h-4" />
+						</Button>
+						<Button
+							onClick={() => timelineRef.current?.suggestZooms()}
+							variant="ghost"
+							size="icon"
+							className="h-7 w-7 rounded-full text-muted-foreground transition-all hover:bg-[var(--brand-accent)]/10 hover:text-[var(--brand-accent)]"
+							title={t("timeline.zoom.suggestZooms")}
+						>
+							<WandSparkles className="w-4 h-4" />
+						</Button>
+						<Button
+							onClick={() => timelineRef.current?.splitClip()}
+							variant="ghost"
+							size="icon"
+							className="h-7 w-7 rounded-full text-muted-foreground transition-all hover:bg-foreground/10 hover:text-foreground"
+							title={t("editor.toolbar.splitClip")}
+						>
+							<Scissors className="w-4 h-4" />
+						</Button>
+					</div>
+					<div className="min-h-0 flex-1">
+						<TimelineEditor
+							ref={timelineRef}
+							videoDuration={timelineDuration}
+							currentTime={currentTime}
+							playheadTime={timelinePlayheadTime}
+							onSeek={handleTimelineSeek}
+							videoPath={videoPath}
+							videoSourcePath={videoSourcePath}
+							cursorTelemetrySourcePath={cursorTelemetrySourcePath}
+							cursorTelemetry={normalizedCursorTelemetry}
+							autoSuggestZoomsTrigger={autoSuggestZoomsTrigger}
+							onAutoSuggestZoomsConsumed={handleAutoSuggestZoomsConsumed}
+							disableSuggestedZooms={!autoApplyFreshRecordingAutoZooms}
+							zoomRegions={zoomRegions}
+							onZoomAdded={handleZoomAdded}
+							onZoomSuggested={handleZoomSuggested}
+							onZoomSpanChange={handleZoomSpanChange}
+							onZoomDelete={handleZoomDelete}
+							selectedZoomId={selectedZoomId}
+							onSelectZoom={handleSelectZoom}
+							trimRegions={trimRegions}
+							clipRegions={clipRegions}
+							onClipSplit={handleClipSplit}
+							onClipSpanChange={handleClipSpanChange}
+							selectedClipId={selectedClipId}
+							onSelectClip={handleSelectClip}
+							audioRegions={audioRegions}
+							onAudioAdded={handleAudioAdded}
+							onAudioSpanChange={handleAudioSpanChange}
+							onAudioDelete={handleAudioDelete}
+							selectedAudioId={selectedAudioId}
+							onSelectAudio={handleSelectAudio}
+							annotationRegions={annotationRegions}
+							onAnnotationAdded={handleAnnotationAdded}
+							onAnnotationSpanChange={handleAnnotationSpanChange}
+							onAnnotationDelete={handleAnnotationDelete}
+							selectedAnnotationId={selectedAnnotationId}
+							onSelectAnnotation={handleSelectAnnotation}
+							showSourceAudioTrack={clipRegions.some((c) => c.showSourceAudio)}
+							sourceAudioTrackSettings={audio.activeSourceAudioTrackSettings}
+							getSourceAudioTrackSettingsForClip={
+								audio.getSourceAudioTrackSettingsForClip
+							}
+							onSourceAudioAvailabilityChange={(available) => {
+								setHasClipSourceAudio(available);
+							}}
+							onSourceAudioTracksMetaChange={(tracks) => {
+								audio.onSourceAudioTracksMetaChange(tracks);
+							}}
+						/>
+					</div>
 				</div>
-				<div className="min-h-0 flex-1">
-					<TimelineEditor
-						ref={timelineRef}
-						videoDuration={timelineDuration}
-						currentTime={currentTime}
-						playheadTime={timelinePlayheadTime}
-						onSeek={handleTimelineSeek}
-						videoPath={videoPath}
-						videoSourcePath={videoSourcePath}
-						cursorTelemetrySourcePath={cursorTelemetrySourcePath}
-						cursorTelemetry={normalizedCursorTelemetry}
-						autoSuggestZoomsTrigger={autoSuggestZoomsTrigger}
-						onAutoSuggestZoomsConsumed={handleAutoSuggestZoomsConsumed}
-						disableSuggestedZooms={!autoApplyFreshRecordingAutoZooms}
-						zoomRegions={zoomRegions}
-						onZoomAdded={handleZoomAdded}
-						onZoomSuggested={handleZoomSuggested}
-						onZoomSpanChange={handleZoomSpanChange}
-						onZoomDelete={handleZoomDelete}
-						selectedZoomId={selectedZoomId}
-						onSelectZoom={handleSelectZoom}
-						trimRegions={trimRegions}
-						clipRegions={clipRegions}
-						onClipSplit={handleClipSplit}
-						onClipSpanChange={handleClipSpanChange}
-						selectedClipId={selectedClipId}
-						onSelectClip={handleSelectClip}
-						audioRegions={audioRegions}
-						onAudioAdded={handleAudioAdded}
-						onAudioSpanChange={handleAudioSpanChange}
-						onAudioDelete={handleAudioDelete}
-						selectedAudioId={selectedAudioId}
-						onSelectAudio={handleSelectAudio}
-						annotationRegions={annotationRegions}
-						onAnnotationAdded={handleAnnotationAdded}
-						onAnnotationSpanChange={handleAnnotationSpanChange}
-						onAnnotationDelete={handleAnnotationDelete}
-						selectedAnnotationId={selectedAnnotationId}
-						onSelectAnnotation={handleSelectAnnotation}
-						showSourceAudioTrack={clipRegions.some((c) => c.showSourceAudio)}
-						sourceAudioTrackSettings={audio.activeSourceAudioTrackSettings}
-						getSourceAudioTrackSettingsForClip={
-							audio.getSourceAudioTrackSettingsForClip
-						}
-						onSourceAudioAvailabilityChange={(available) => {
-							setHasClipSourceAudio(available);
-						}}
-						onSourceAudioTracksMetaChange={(tracks) => {
-							audio.onSourceAudioTracksMetaChange(tracks);
-						}}
-					/>
-				</div>
-			</div>
 				{/* ── /TIMELINE DOCK ── */}
 			</div>
 			{/* ── /RESPONSIVE WORKSPACE GRID ── */}
@@ -7132,9 +7278,7 @@ export default function VideoEditor() {
 					aria-label={t("settings.sections.title", "Inspector")}
 				>
 					<InspectorToggleIcon className="h-4 w-4" />
-					<span className="font-medium">
-						{t("settings.sections.title", "Inspector")}
-					</span>
+					<span className="font-medium">{t("settings.sections.title", "Inspector")}</span>
 				</Button>
 			) : null}
 

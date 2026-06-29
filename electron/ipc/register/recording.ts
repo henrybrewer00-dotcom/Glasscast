@@ -8,6 +8,7 @@ import {
 	BrowserWindow,
 	desktopCapturer,
 	dialog,
+	globalShortcut,
 	ipcMain,
 	shell,
 	systemPreferences,
@@ -31,6 +32,12 @@ import {
 	writeCursorTelemetry,
 } from "../cursor/telemetry";
 import { getFfmpegBinaryPath } from "../ffmpeg/binary";
+import {
+	persistWebcamLayout,
+	readWebcamLayout,
+	recordWebcamLayoutEvent,
+	resetWebcamLayoutCapture,
+} from "../webcam/layout";
 import {
 	ensureNativeCaptureHelperBinary,
 	ensureSwiftHelperBinary,
@@ -759,10 +766,14 @@ export function registerRecordingHandlers(
 				attachNativeCaptureLifecycle(captProc);
 
 				captProc.stdout.on("data", (chunk: Buffer) => {
-					setNativeCaptureOutputBuffer(nativeCaptureOutputBuffer + chunk.toString());
+					const text = chunk.toString();
+					console.error("[sck-helper stdout]", text.trimEnd());
+					setNativeCaptureOutputBuffer(nativeCaptureOutputBuffer + text);
 				});
 				captProc.stderr.on("data", (chunk: Buffer) => {
-					setNativeCaptureOutputBuffer(nativeCaptureOutputBuffer + chunk.toString());
+					const text = chunk.toString();
+					console.error("[sck-helper stderr]", text.trimEnd());
+					setNativeCaptureOutputBuffer(nativeCaptureOutputBuffer + text);
 				});
 
 				await waitForNativeCaptureStart(captProc);
@@ -996,6 +1007,11 @@ export function registerRecordingHandlers(
 					await persistPendingCursorTelemetry(finalVideoPath);
 				} catch (error) {
 					console.warn("Failed to persist cursor telemetry during native stop:", error);
+				}
+				try {
+					await persistWebcamLayout(finalVideoPath);
+				} catch (error) {
+					console.warn("Failed to persist webcam layout during native stop:", error);
 				}
 
 				return { success: true, path: finalVideoPath };
@@ -1821,6 +1837,7 @@ export function registerRecordingHandlers(
 			setPendingCursorSamples([]);
 			setCursorCaptureStartTimeMs(Date.now());
 			resetCursorCaptureClock();
+			resetWebcamLayoutCapture();
 			setLinuxCursorScreenPoint(null);
 			setLastLeftClick(null);
 			sampleCursorPoint();
@@ -1837,6 +1854,9 @@ export function registerRecordingHandlers(
 			resetCursorCaptureClock();
 			snapshotCursorTelemetryForPersistence();
 			setActiveCursorSamples([]);
+			// Safety: ensure the framing shortcuts never linger after a recording.
+			globalShortcut.unregister("Control+Alt+1");
+			globalShortcut.unregister("Control+Alt+2");
 		}
 
 		const source = selectedSource || { name: "Screen" };
@@ -1863,6 +1883,66 @@ export function registerRecordingHandlers(
 		resumeCursorCapture(normalizeRendererTimestampMs(resumedAtMs));
 		sampleCursorPoint();
 		return { success: true };
+	});
+
+	ipcMain.handle("record-webcam-layout-event", (_, mode: unknown) => {
+		if (mode === "fullscreen" || mode === "bubble") {
+			recordWebcamLayoutEvent(mode);
+			return { success: true };
+		}
+		return { success: false, message: "Invalid webcam layout mode" };
+	});
+
+	// Live fullscreen/bubble framing switches. These are GLOBAL shortcuts so they
+	// work while another app is focused during a recording — which means they must
+	// use a modifier combo. Bare "1"/"2" would be swallowed system-wide and break
+	// typing those digits in the app being recorded. ⌃⌥1 / ⌃⌥2 (Control+Option) are
+	// effectively unused elsewhere. Registered only while recording, torn down on stop.
+	const WEBCAM_FULLSCREEN_ACCELERATOR = "Control+Alt+1";
+	const WEBCAM_BUBBLE_ACCELERATOR = "Control+Alt+2";
+
+	const broadcastWebcamLayoutMode = (mode: "fullscreen" | "bubble") => {
+		recordWebcamLayoutEvent(mode);
+		for (const window of BrowserWindow.getAllWindows()) {
+			if (!window.isDestroyed()) {
+				window.webContents.send("webcam-layout-mode-changed", { mode });
+			}
+		}
+	};
+
+	const setWebcamLayoutShortcutsEnabled = (enabled: boolean) => {
+		globalShortcut.unregister(WEBCAM_FULLSCREEN_ACCELERATOR);
+		globalShortcut.unregister(WEBCAM_BUBBLE_ACCELERATOR);
+		if (!enabled) {
+			return { success: true, registered: false };
+		}
+		const okFullscreen = globalShortcut.register(WEBCAM_FULLSCREEN_ACCELERATOR, () =>
+			broadcastWebcamLayoutMode("fullscreen"),
+		);
+		const okBubble = globalShortcut.register(WEBCAM_BUBBLE_ACCELERATOR, () =>
+			broadcastWebcamLayoutMode("bubble"),
+		);
+		if (!okFullscreen || !okBubble) {
+			console.warn(
+				"[webcam-layout] Could not register ⌃⌥1 / ⌃⌥2 framing shortcuts (already in use).",
+			);
+		}
+		// Seed the opening framing so recordings start on the fullscreen talking-head shot.
+		broadcastWebcamLayoutMode("fullscreen");
+		return { success: true, registered: okFullscreen && okBubble };
+	};
+
+	ipcMain.handle("set-webcam-layout-shortcuts-enabled", (_, enabled: unknown) => {
+		return setWebcamLayoutShortcutsEnabled(enabled === true);
+	});
+
+	ipcMain.handle("get-webcam-layout", async (_, videoPath?: string) => {
+		const targetVideoPath = normalizeVideoSourcePath(videoPath ?? currentVideoPath);
+		if (!targetVideoPath) {
+			return { success: true, events: [] };
+		}
+		const events = await readWebcamLayout(targetVideoPath);
+		return { success: true, events };
 	});
 
 	ipcMain.handle("get-cursor-telemetry", async (_, videoPath?: string) => {

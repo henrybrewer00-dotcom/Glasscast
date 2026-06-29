@@ -588,6 +588,40 @@ interface Window {
 			message?: string;
 			error?: string;
 		}>;
+		teleprompterSetState: (next: {
+			visible?: boolean;
+			script?: string;
+			speed?: number;
+			fontSize?: number;
+			opacity?: number;
+			voicePaced?: boolean;
+			microphoneDeviceId?: string | null;
+		}) => Promise<{ success: boolean }>;
+		requestTeleprompterState: () => Promise<unknown>;
+		onTeleprompterState: (
+			callback: (state: {
+				visible: boolean;
+				script: string;
+				speed: number;
+				fontSize: number;
+				opacity: number;
+				voicePaced: boolean;
+				microphoneDeviceId?: string | null;
+			}) => void,
+		) => () => void;
+		recordWebcamLayoutEvent: (
+			mode: "fullscreen" | "bubble",
+		) => Promise<{ success: boolean; message?: string }>;
+		getWebcamLayout: (videoPath?: string) => Promise<{
+			success: boolean;
+			events: Array<{ timeMs: number; mode: "fullscreen" | "bubble" }>;
+		}>;
+		setWebcamLayoutShortcutsEnabled: (
+			enabled: boolean,
+		) => Promise<{ success: boolean; registered?: boolean }>;
+		onWebcamLayoutModeChanged: (
+			callback: (mode: "fullscreen" | "bubble") => void,
+		) => () => void;
 		getSystemCursorAssets: () => Promise<{
 			success: boolean;
 			cursors: Record<string, SystemCursorAsset>;

@@ -206,6 +206,47 @@ export const AGENT_TOOLS: AgentTool[] = [
 		},
 	},
 	{
+		name: "set_webcam_style",
+		description:
+			"Change the look of the webcam/facecam bubble. Use this for requests about the face/webcam color, ring light, or styling. ringColor is a hex color like '#ff3366' for the ring-light glow around the face. ringLight is the glow strength 0–1 (0 = off). Also supports shadow (0–1), cornerRadius/roundness (0–160 px), and size (10–100% of the frame). Only the fields you pass are changed.",
+		category: "scene",
+		destructive: false,
+		parameters: {
+			type: "object",
+			properties: {
+				ringColor: {
+					type: "string",
+					description: "Ring-light color as hex, e.g. '#ffffff' or '#ff3366'",
+				},
+				ringLight: {
+					type: "number",
+					description: "Ring-light glow strength 0–1 (0 = off)",
+					minimum: 0,
+					maximum: 1,
+				},
+				shadow: {
+					type: "number",
+					description: "Shadow strength 0–1",
+					minimum: 0,
+					maximum: 1,
+				},
+				cornerRadius: {
+					type: "integer",
+					description: "Roundness in px, 0–160",
+					minimum: 0,
+					maximum: 160,
+				},
+				size: {
+					type: "integer",
+					description: "Bubble size as percent of frame, 10–100",
+					minimum: 10,
+					maximum: 100,
+				},
+			},
+			additionalProperties: false,
+		},
+	},
+	{
 		name: "seek_to",
 		description: "Move the playhead to a specific time in milliseconds.",
 		category: "playback",

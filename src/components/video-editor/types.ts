@@ -139,6 +139,22 @@ export type WebcamPositionPreset =
 	| "bottom-center"
 	| "custom";
 
+/**
+ * Webcam framing mode on the recording timeline.
+ * - "fullscreen": the webcam fills the whole frame, hiding the screen (intro/talking-head).
+ * - "bubble": the normal small webcam overlay with the screen visible.
+ */
+export type WebcamLayoutMode = "fullscreen" | "bubble";
+
+/**
+ * A switch point on the recording timeline. The mode applies from `timeMs`
+ * (recording-start clock, same origin as cursor telemetry) until the next event.
+ */
+export interface WebcamLayoutEvent {
+	timeMs: number;
+	mode: WebcamLayoutMode;
+}
+
 export interface WebcamOverlaySettings {
 	enabled: boolean;
 	sourcePath: string | null;
@@ -154,6 +170,18 @@ export interface WebcamOverlaySettings {
 	cornerRadius: number;
 	shadow: number;
 	margin: number;
+	/** Ring-light glow strength around the bubble (0 = off, 1 = max). */
+	ringLight: number;
+	/** Ring-light color as a hex string, e.g. "#ffffff". */
+	ringColor: string;
+	/**
+	 * Timeline of fullscreen/bubble switches captured live during recording (keys
+	 * 1 = fullscreen, 2 = bubble). Empty/undefined means the webcam is a plain
+	 * bubble for the whole video (legacy behavior). When present, the first event
+	 * defines the opening framing — webcam-enabled recordings seed this with a
+	 * fullscreen event at 0 so they open on the talking-head shot.
+	 */
+	layout?: WebcamLayoutEvent[];
 }
 
 export const DEFAULT_CURSOR_SIZE = 3.0;
@@ -196,6 +224,12 @@ export const DEFAULT_WEBCAM_REACT_TO_ZOOM = true;
 export const DEFAULT_WEBCAM_CORNER_RADIUS = 90;
 export const DEFAULT_WEBCAM_SHADOW = 0.67;
 export const DEFAULT_WEBCAM_MARGIN = 24;
+export const DEFAULT_WEBCAM_RING_LIGHT = 0;
+export const DEFAULT_WEBCAM_RING_COLOR = "#ffffff";
+/** Duration of the eased morph between fullscreen and bubble framings. */
+export const DEFAULT_WEBCAM_LAYOUT_TRANSITION_MS = 600;
+/** Ring-light strength applied to the fullscreen framing when ring light is off. */
+export const DEFAULT_WEBCAM_FULLSCREEN_RING_LIGHT = 0.6;
 export const DEFAULT_WEBCAM_POSITION_PRESET: WebcamPositionPreset = "bottom-right";
 export const DEFAULT_WEBCAM_POSITION_X = 1;
 export const DEFAULT_WEBCAM_POSITION_Y = 1;
@@ -216,6 +250,8 @@ export const DEFAULT_WEBCAM_OVERLAY: WebcamOverlaySettings = {
 	cornerRadius: DEFAULT_WEBCAM_CORNER_RADIUS,
 	shadow: DEFAULT_WEBCAM_SHADOW,
 	margin: DEFAULT_WEBCAM_MARGIN,
+	ringLight: DEFAULT_WEBCAM_RING_LIGHT,
+	ringColor: DEFAULT_WEBCAM_RING_COLOR,
 };
 
 export interface TrimRegion {
@@ -562,7 +598,10 @@ export type CaptionTextTransform = "none" | "uppercase" | "lowercase";
 
 export const CAPTION_FONT_FAMILY_OPTIONS: Array<{ value: string; label: string }> = [
 	{ value: getDefaultCaptionFontFamily(), label: "System" },
-	{ value: '"SF Pro Rounded", ui-rounded, "Arial Rounded MT Bold", sans-serif', label: "Rounded" },
+	{
+		value: '"SF Pro Rounded", ui-rounded, "Arial Rounded MT Bold", sans-serif',
+		label: "Rounded",
+	},
 	{ value: "Georgia, 'Times New Roman', serif", label: "Serif" },
 	{ value: "Menlo, Monaco, 'Courier New', monospace", label: "Mono" },
 	{ value: "'Arial Black', 'Helvetica Neue', sans-serif", label: "Black" },

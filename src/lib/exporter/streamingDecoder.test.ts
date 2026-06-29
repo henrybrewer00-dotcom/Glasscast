@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+	getCursorTelemetryOffsetMs,
 	getDecodedFrameStartupOffsetUs,
 	getDecodedFrameTimelineOffsetUs,
 	StreamingVideoDecoder,
@@ -162,5 +163,33 @@ describe("getDecodedFrameTimelineOffsetUs", () => {
 				mediaStartTime: 0.1,
 			}),
 		).toBe(150_000);
+	});
+});
+
+describe("getCursorTelemetryOffsetMs", () => {
+	it("recovers the capture warm-up so cursor telemetry tracks recorded frames", () => {
+		// Real ScreenCaptureKit recording: ~1.32s warm-up before the first frame,
+		// container start_time == first-frame PTS, so the decoded timeline offset is
+		// 0 and the full warm-up must be added back to the cursor lookup time.
+		expect(
+			getCursorTelemetryOffsetMs(1_321_667, {
+				mediaStartTime: 1.321667,
+				streamStartTime: 1.321667,
+			}),
+		).toBeCloseTo(1321.667, 3);
+	});
+
+	it("is zero when the recording starts at the first frame (no warm-up)", () => {
+		expect(getCursorTelemetryOffsetMs(0, { mediaStartTime: 0, streamStartTime: 0 })).toBe(0);
+	});
+
+	it("is zero when the decoded timeline already preserves the stream start", () => {
+		// streamStart == first PTS, mediaStart 0 → timelineOffset == first, net 0.
+		expect(
+			getCursorTelemetryOffsetMs(6_741_667, {
+				mediaStartTime: 0,
+				streamStartTime: 6.741667,
+			}),
+		).toBe(0);
 	});
 });

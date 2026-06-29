@@ -1,4 +1,5 @@
 import {
+	ArticleIcon,
 	DotsSixVerticalIcon,
 	DotsThreeIcon,
 	FolderIcon,
@@ -27,6 +28,8 @@ import { useRecordingTimer } from "./hooks/useRecordingTimer";
 import { useWebcamPreviewOverlay } from "./hooks/useWebcamPreviewOverlay";
 import styles from "./LaunchWindow.module.css";
 import { CountdownPopover } from "./popovers/CountdownPopover";
+import { TeleprompterPopover } from "./popovers/TeleprompterPopover";
+import { useTeleprompter } from "./hooks/useTeleprompter";
 import {
 	LaunchPopoverCoordinatorProvider,
 	useLaunchPopoverCoordinator,
@@ -134,6 +137,8 @@ function LaunchWindowContent() {
 	const {
 		showFloatingWebcamPreview,
 		setShowFloatingWebcamPreview,
+		webcamPreviewLocked,
+		setWebcamPreviewLocked,
 		showRecordingWebcamPreview,
 		webcamPreviewOffset,
 		recordingWebcamPreviewContainerRef,
@@ -152,6 +157,19 @@ function LaunchWindowContent() {
 		hudOverlayMousePassthroughSupported,
 	});
 
+	const {
+		teleprompterEnabled,
+		setTeleprompterEnabled,
+		teleprompterScript,
+		setTeleprompterScript,
+		teleprompterSpeed,
+		setTeleprompterSpeed,
+		teleprompterVoicePaced,
+		setTeleprompterVoicePaced,
+		teleprompterFontSize,
+		setTeleprompterFontSize,
+	} = useTeleprompter({ recording, microphoneDeviceId });
+
 	useEffect(() => {
 		window.electronAPI?.hudOverlaySetWebcamPreviewVisible?.(showRecordingWebcamPreview);
 	}, [showRecordingWebcamPreview]);
@@ -160,6 +178,31 @@ function LaunchWindowContent() {
 		return () => {
 			window.electronAPI?.hudOverlaySetWebcamPreviewVisible?.(false);
 		};
+	}, []);
+
+	// Live fullscreen/bubble framing: enable the global 1/2 shortcuts only while
+	// recording with the webcam on (so they capture keys app-wide but never linger),
+	// seed the opening fullscreen shot, and mirror switches into the live preview.
+	const [webcamLayoutMode, setWebcamLayoutMode] = useState<"fullscreen" | "bubble">("bubble");
+	useEffect(() => {
+		const active = recording && webcamEnabled;
+		void window.electronAPI?.setWebcamLayoutShortcutsEnabled?.(active);
+		if (active) {
+			setWebcamLayoutMode("fullscreen");
+		} else {
+			setWebcamLayoutMode("bubble");
+		}
+		return () => {
+			if (active) {
+				void window.electronAPI?.setWebcamLayoutShortcutsEnabled?.(false);
+			}
+		};
+	}, [recording, webcamEnabled]);
+	useEffect(() => {
+		const unsubscribe = window.electronAPI?.onWebcamLayoutModeChanged?.((mode) => {
+			setWebcamLayoutMode(mode);
+		});
+		return () => unsubscribe?.();
 	}, []);
 
 	const {
@@ -451,6 +494,10 @@ function LaunchWindowContent() {
 						onToggleFloatingPreview={() =>
 							setShowFloatingWebcamPreview((current) => !current)
 						}
+						webcamPreviewLocked={webcamPreviewLocked}
+						onToggleWebcamPreviewLocked={() =>
+							setWebcamPreviewLocked(!webcamPreviewLocked)
+						}
 						showWebcamControls={showWebcamControls}
 						setWebcamPreviewNode={setWebcamPreviewNode}
 						videoDevices={videoDevices}
@@ -494,6 +541,30 @@ function LaunchWindowContent() {
 								title={t("recording.countdownDelay")}
 							>
 								<TimerIcon size={18} />
+							</button>
+						}
+					/>
+
+					<TeleprompterPopover
+						enabled={teleprompterEnabled}
+						onToggleEnabled={() => setTeleprompterEnabled(!teleprompterEnabled)}
+						script={teleprompterScript}
+						onScriptChange={setTeleprompterScript}
+						speed={teleprompterSpeed}
+						onSpeedChange={setTeleprompterSpeed}
+						voicePaced={teleprompterVoicePaced}
+						onToggleVoicePaced={() => setTeleprompterVoicePaced(!teleprompterVoicePaced)}
+						fontSize={teleprompterFontSize}
+						onFontSizeChange={setTeleprompterFontSize}
+						trigger={
+							<button
+								type="button"
+								className={`${styles.toggleBtn} ${
+									teleprompterEnabled ? styles.toggleBtnActive : ""
+								}`}
+								title={t("recording.teleprompter", "Teleprompter")}
+							>
+								<ArticleIcon size={18} />
 							</button>
 						}
 					/>
@@ -629,7 +700,7 @@ function LaunchWindowContent() {
 					className="flex items-center overflow-visible flex-col-reverse pointer-events-none"
 				>
 					<div
-						className="flex flex-col items-center pointer-events-auto p-2"
+						className="flex flex-col items-center pointer-events-auto"
 						onMouseEnter={handleHudMouseEnter}
 						onMouseLeave={handleHudMouseLeave}
 					>
@@ -652,18 +723,31 @@ function LaunchWindowContent() {
 						{showRecordingWebcamPreview && (
 							<div
 								ref={recordingWebcamPreviewContainerRef}
-								className={`${styles.recordingWebcamPreview} ${styles.electronNoDrag} pointer-events-auto`}
-								data-hud-interactive
+								className={`${styles.recordingWebcamPreview} ${styles.electronNoDrag} ${
+									webcamPreviewLocked ? "pointer-events-none" : "pointer-events-auto"
+								}`}
+								// When locked (default) the preview has NO hitbox: pointer-events:none
+								// + no interactive markers/handlers, so it never captures clicks,
+								// scroll, or keystrokes meant for the app being recorded.
+								{...(webcamPreviewLocked ? {} : { "data-hud-interactive": true })}
 								title={t("recording.webcam")}
 								style={{
 									transform: `translate(${webcamPreviewOffset.x}px, ${webcamPreviewOffset.y}px)`,
+									transition: "box-shadow 200ms ease",
+									borderRadius: "9999px",
+									// Ring-only indicator for fullscreen framing (no size bump, so it
+									// doesn't widen the area where the overlay eats scroll/clicks).
+									boxShadow:
+										webcamLayoutMode === "fullscreen"
+											? "0 0 0 3px rgba(255,255,255,0.9), 0 0 22px 6px rgba(255,255,255,0.55)"
+											: undefined,
 								}}
-								onMouseEnter={handleHudMouseEnter}
-								onMouseLeave={handleHudMouseLeave}
-								onPointerDown={handleWebcamPreviewPointerDown}
-								onPointerMove={handleWebcamPreviewPointerMove}
-								onPointerUp={handleWebcamPreviewPointerUp}
-								onPointerCancel={handleWebcamPreviewPointerUp}
+								onMouseEnter={webcamPreviewLocked ? undefined : handleHudMouseEnter}
+								onMouseLeave={webcamPreviewLocked ? undefined : handleHudMouseLeave}
+								onPointerDown={webcamPreviewLocked ? undefined : handleWebcamPreviewPointerDown}
+								onPointerMove={webcamPreviewLocked ? undefined : handleWebcamPreviewPointerMove}
+								onPointerUp={webcamPreviewLocked ? undefined : handleWebcamPreviewPointerUp}
+								onPointerCancel={webcamPreviewLocked ? undefined : handleWebcamPreviewPointerUp}
 							>
 								<video
 									ref={setRecordingWebcamPreviewNode}

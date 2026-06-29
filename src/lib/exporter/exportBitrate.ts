@@ -16,6 +16,26 @@ export function getEncodingModeBitrateMultiplier(encodingMode: ExportEncodingMod
 	}
 }
 
+/**
+ * Floor for the effective encoding-mode multiplier per quality preset. The
+ * encoding-mode toggle (Fast/Balanced/Quality) is a separate control from the
+ * quality toggle, so a user picking the highest quality ("Original"/source) but
+ * leaving encoding on the Balanced default would otherwise have their bitrate
+ * silently halved (and gutted to 10% on Fast) — producing soft, blocky exports
+ * on what reads as "best settings". Keep the top presets sharp regardless of the
+ * encoding mode while still letting lower presets trade quality for speed/size.
+ */
+function getQualityBitrateMultiplierFloor(quality: ExportQuality): number {
+	switch (quality) {
+		case "source":
+			return 0.85;
+		case "high":
+			return 0.6;
+		default:
+			return 0;
+	}
+}
+
 export function getSourceQualityBitrate(width: number, height: number): number {
 	const totalPixels = width * height;
 	if (totalPixels > 2560 * 1440) {
@@ -94,10 +114,20 @@ export function getMp4ExportBitrate(options: {
 	encodingMode: ExportEncodingMode;
 	useModernNativeStaticLayout?: boolean;
 }): number {
+	// "Fast" is the explicit trade-quality-for-speed escape hatch, so leave it
+	// untouched. For every other mode keep the top quality presets sharp even when
+	// the encoding toggle was left on its Balanced default.
+	const effectiveEncodingModeMultiplier =
+		options.encodingMode === "fast"
+			? getEncodingModeBitrateMultiplier(options.encodingMode)
+			: Math.max(
+					getEncodingModeBitrateMultiplier(options.encodingMode),
+					getQualityBitrateMultiplierFloor(options.quality),
+				);
 	const requestedBitrate = Math.round(
 		getBaseMp4ExportBitrate(options.width, options.height, options.quality) *
 			getFrameRateBitrateMultiplier(options.frameRate) *
-			getEncodingModeBitrateMultiplier(options.encodingMode),
+			effectiveEncodingModeMultiplier,
 	);
 	const nativeStaticLayoutBitrate =
 		options.useModernNativeStaticLayout && options.encodingMode !== "fast"

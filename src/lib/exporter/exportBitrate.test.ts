@@ -38,6 +38,8 @@ describe("export bitrate policy", () => {
 	});
 
 	it("keeps modern native static-layout source exports high enough for screen text", () => {
+		// Source quality keeps a high effective bitrate even on the Balanced default
+		// (the encoding toggle no longer silently halves "best settings").
 		expect(
 			getMp4ExportBitrate({
 				width: 1920,
@@ -47,7 +49,7 @@ describe("export bitrate policy", () => {
 				encodingMode: "balanced",
 				useModernNativeStaticLayout: true,
 			}),
-		).toBe(22_000_000);
+		).toBe(25_500_000);
 		expect(
 			getMp4ExportBitrate({
 				width: 1920,
@@ -94,6 +96,54 @@ describe("export bitrate policy", () => {
 				useModernNativeStaticLayout: true,
 			}),
 		).toBe(3_000_000);
+	});
+
+	it("keeps top quality presets sharp on the Balanced default (webcodecs path)", () => {
+		// source: base 30M * fr 1.0 * floor 0.85 = 25.5M (vs 15M before the floor).
+		expect(
+			getMp4ExportBitrate({
+				width: 1920,
+				height: 1080,
+				frameRate: 30,
+				quality: "source",
+				encodingMode: "balanced",
+			}),
+		).toBe(25_500_000);
+		// high: base 20M * fr 1.0 * floor 0.6 = 12M (vs 10M before the floor).
+		expect(
+			getMp4ExportBitrate({
+				width: 1920,
+				height: 1080,
+				frameRate: 30,
+				quality: "high",
+				encodingMode: "balanced",
+			}),
+		).toBe(12_000_000);
+	});
+
+	it("leaves Fast as an explicit speed/size escape hatch even at top quality", () => {
+		expect(
+			getMp4ExportBitrate({
+				width: 1920,
+				height: 1080,
+				frameRate: 30,
+				quality: "source",
+				encodingMode: "fast",
+			}),
+		).toBe(3_000_000);
+	});
+
+	it("does not change lower quality presets", () => {
+		// good: base 20M * 0.5 (no floor) = 10M.
+		expect(
+			getMp4ExportBitrate({
+				width: 1920,
+				height: 1080,
+				frameRate: 30,
+				quality: "good",
+				encodingMode: "balanced",
+			}),
+		).toBe(10_000_000);
 	});
 
 	it("scales the modern native cap with output pixel rate", () => {
