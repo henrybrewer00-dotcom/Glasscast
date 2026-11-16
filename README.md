@@ -104,3 +104,7 @@ Bugs & feature requests: [issues](https://github.com/henrybrewer00-dotcom/Glassc
 Glasscast is licensed under the **[AGPL-3.0](LICENSE.md)**.
 
 Glasscast builds on **[Recordly](https://github.com/webadderallorg/Recordly)** (AGPLv3) by webadderall, itself derived from **[OpenScreen](https://github.com/siddharthvaddem/openscreen)** by Siddharth Vaddem. Much of Glasscast has been rewritten or built fresh, but Recordly's source was referenced many times along the way — especially the macOS screen-recording permissions flow — and portions of its code remain. Full credit and thanks to webadderall, the Recordly contributors, and Siddharth Vaddem. As the AGPLv3 requires, Glasscast is distributed under the same license.
+
+---
+
+Built by [Henry Brewer](https://www.henrybrewer.dev), a 14-year-old developer from Austin.
